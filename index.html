@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Basque Subtitle Flashcards</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+  fieldset { margin-bottom: 1rem; }
+  label { margin-right: 1rem; }
+  input[type=text] { width: 70%; }
+  input[type=number] { width: 4rem; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+  td, th { border-bottom: 1px solid #ddd; padding: 4px 6px; text-align: left; vertical-align: top; }
+  td.ex { color: #666; font-size: .85em; }
+  td input.tr { width: 100%; }
+  textarea { width: 100%; height: 12rem; font-family: monospace; }
+  #status { color: #555; }
+</style>
+</head>
+<body>
+<h1>Basque Subtitle Flashcards</h1>
+
+<fieldset>
+  <legend>Subtitle source</legend>
+  <p><label>URL: <input type="text" id="url" placeholder="https://.../subtitles.srt"></label></p>
+  <p><label>or file (.srt, .vtt, .ass): <input type="file" id="file" accept=".srt,.vtt,.ass,.ssa,.txt"></label></p>
+</fieldset>
+
+<fieldset>
+  <legend>Options</legend>
+  <label>Min length <input type="number" id="minLen" value="4" min="1"></label>
+  <label>Min frequency <input type="number" id="minFreq" value="1" min="1"></label>
+  <label>Max words <input type="number" id="limit" value="50" min="1"></label>
+  <label><input type="checkbox" id="lemmatize" checked> Lemmatize with Stanza</label>
+  <label><input type="checkbox" id="translate" checked> Translate to Spanish</label>
+  <label><input type="checkbox" id="example" checked> Include example sentence</label>
+</fieldset>
+
+<button id="go">Extract words</button> <span id="status"></span>
+
+<div id="result" hidden>
+  <p>Untick words you already know; edit translations if needed.</p>
+  <table>
+    <thead><tr><th></th><th>Word</th><th>#</th><th>Translation</th><th>Example</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <h3>RemNote text</h3>
+  <textarea id="out" readonly></textarea>
+  <p><button id="copy">Copy</button> <button id="dl">Download .md</button>
+  <br><small>Paste into a RemNote document (cards use <code>word :: translation</code>; the example is a child bullet).</small></p>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let words = [];
+
+$('go').onclick = async () => {
+  const file = $('file').files[0];
+  const url = $('url').value.trim();
+  if (!file && !url) { $('status').textContent = 'Provide a URL or a file.'; return; }
+  const body = {
+    minLen: $('minLen').value, minFreq: $('minFreq').value, limit: $('limit').value,
+    translate: $('translate').checked, lemmatize: $('lemmatize').checked,
+  };
+  if (file) body.text = await file.text(); else body.url = url;
+  $('status').textContent = 'Working…';
+  $('go').disabled = true;
+  try {
+    const r = await fetch('/api/extract', { method: 'POST', body: JSON.stringify(body) });
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    words = data.words.map(w => ({ ...w, keep: true }));
+    $('status').textContent = `${data.lines} subtitle lines, ${words.length} words (${data.engine})` +
+      (data.stanzaMissing ? ' — Stanza not installed, used plain word matching.' : '.');
+    render();
+  } catch (e) {
+    $('status').textContent = 'Error: ' + e.message;
+  } finally { $('go').disabled = false; }
+};
+
+function render() {
+  $('result').hidden = false;
+  const rows = $('rows'); rows.innerHTML = '';
+  words.forEach((w, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td><input type="checkbox" checked></td><td></td><td>${w.count}</td>
+      <td><input class="tr"></td><td class="ex"></td>`;
+    tr.children[1].textContent = w.word;
+    tr.querySelector('.tr').value = w.translation || '';
+    tr.children[4].textContent = w.example;
+    tr.querySelector('[type=checkbox]').onchange = e => { w.keep = e.target.checked; build(); };
+    tr.querySelector('.tr').oninput = e => { w.translation = e.target.value; build(); };
+    rows.appendChild(tr);
+  });
+  build();
+}
+
+function build() {
+  const ex = $('example').checked;
+  $('out').value = words.filter(w => w.keep).map(w => {
+    let s = `${w.word} :: ${w.translation || ''}`;
+    if (ex && w.example) s += `\n    ${w.example}`;
+    return s;
+  }).join('\n');
+}
+$('example').onchange = build;
+
+$('copy').onclick = async () => {
+  await navigator.clipboard.writeText($('out').value);
+  $('status').textContent = 'Copied.';
+};
+$('dl').onclick = () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([$('out').value], { type: 'text/markdown' }));
+  a.download = 'basque-words.md';
+  a.click();
+};
+</script>
+</body>
+</html>

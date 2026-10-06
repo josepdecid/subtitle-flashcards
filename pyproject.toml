@@ -1,0 +1,9 @@
+[project]
+name = "subtitle-flashcards"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.13"
+dependencies = [
+    "certifi>=2026.7.22",
+    "stanza>=1.15.0",
+]
