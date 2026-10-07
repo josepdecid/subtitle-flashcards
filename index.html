@@ -33,6 +33,7 @@
   <label>Max words <input type="number" id="limit" value="50" min="1"></label>
   <label><input type="checkbox" id="lemmatize" checked> Lemmatize with Stanza</label>
   <label><input type="checkbox" id="translate" checked> Translate to Spanish</label>
+  <label><input type="checkbox" id="useKnown" checked> Hide known words</label>
   <label><input type="checkbox" id="example" checked> Include example sentence</label>
 </fieldset>
 
@@ -47,6 +48,7 @@
   <h3>RemNote text</h3>
   <textarea id="out" readonly></textarea>
   <p><button id="copy">Copy</button> <button id="dl">Download .md</button>
+  <button id="known" title="Hide all listed words in future extractions">Mark all listed words as known</button>
   <br><small>Paste into a RemNote document (cards use <code>word :: translation</code>; the example is a child bullet).</small></p>
 </div>
 
@@ -60,7 +62,7 @@ $('go').onclick = async () => {
   if (!file && !url) { $('status').textContent = 'Provide a URL or a file.'; return; }
   const body = {
     minLen: $('minLen').value, minFreq: $('minFreq').value, limit: $('limit').value,
-    translate: $('translate').checked, lemmatize: $('lemmatize').checked,
+    translate: $('translate').checked, useKnown: $('useKnown').checked, lemmatize: $('lemmatize').checked,
   };
   if (file) body.text = await file.text(); else body.url = url;
   $('status').textContent = 'Working…';
@@ -71,7 +73,10 @@ $('go').onclick = async () => {
     if (data.error) throw new Error(data.error);
     words = data.words.map(w => ({ ...w, keep: true }));
     $('status').textContent = `${data.lines} subtitle lines, ${words.length} words (${data.engine})` +
-      (data.stanzaMissing ? ' — Stanza not installed, used plain word matching.' : '.');
+      (data.knownSkipped ? `, ${data.knownSkipped} known hidden` : '') +
+      (data.translator ? `, translated by ${data.translator}` : '') +
+      (data.stanzaMissing ? ' — Stanza not installed, used plain word matching.' : '.') +
+      (data.translateError ? ' Translation warning: ' + data.translateError : '');
     render();
   } catch (e) {
     $('status').textContent = 'Error: ' + e.message;
@@ -108,6 +113,11 @@ $('example').onchange = build;
 $('copy').onclick = async () => {
   await navigator.clipboard.writeText($('out').value);
   $('status').textContent = 'Copied.';
+};
+$('known').onclick = async () => {
+  const r = await fetch('/api/known', { method: 'POST', body: JSON.stringify({ words: words.map(w => w.word) }) });
+  const data = await r.json();
+  $('status').textContent = data.error ? 'Error: ' + data.error : `Marked ${data.added} new words as known.`;
 };
 $('dl').onclick = () => {
   const a = document.createElement('a');

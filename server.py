@@ -7,7 +7,8 @@ Run: python3 server.py   then open http://localhost:8000
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from core import ROOT, fetch_url, process
+from core import ROOT, add_known, process
+from net import fetch_url
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -31,18 +32,21 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(404)
 
     def do_POST(self):
-        if self.path != "/api/extract":
+        if self.path not in ("/api/extract", "/api/known"):
             return self.send_error(404)
         try:
             payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            if self.path == "/api/known":
+                return self._json({"added": add_known(payload.get("words", []))})
             text = payload.get("text") or fetch_url(payload["url"])
             result = process(
                 text,
                 min_len=int(payload.get("minLen", 4)),
                 min_freq=int(payload.get("minFreq", 1)),
                 limit=int(payload.get("limit", 50)),
-                lemmatize=bool(payload.get("lemmatize")),
+                lemmatize=bool(payload.get("lemmatize", True)),
                 do_translate=bool(payload.get("translate", True)),
+                use_known=bool(payload.get("useKnown", True)),
             )
             self._json(result)
         except Exception as e:

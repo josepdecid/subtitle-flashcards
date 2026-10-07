@@ -1,40 +1,54 @@
 """Core logic: parse subtitles, extract Basque words, translate them."""
-import json
+import html
 import re
-import ssl
-import urllib.parse
-import urllib.request
-from collections import Counter
-from concurrent.futures import ThreadPoolExecutor
+import unicodedata
+from collections import Counter, deque
 from pathlib import Path
 
-ROOT = Path(__file__).parent
-CACHE_FILE = ROOT / "translations_cache.json"
-CACHE = json.loads(CACHE_FILE.read_text()) if CACHE_FILE.exists() else {}
+from translate import translate_all
 
-# Very common Basque function words that aren't worth studying.
+ROOT = Path(__file__).parent
+KNOWN_FILE = ROOT / "known_words.txt"
+
+# Basque function words (and common inflected forms, for the regex tokenizer) that aren't worth studying.
 STOPWORDS = set(
-    """eta ez bai da dira du dute zen ziren zuen zuten dut duzu dugu duzue naiz
-    zara gara zarete nire zure bere gure zuen hau hori hura hauek horiek haiek
-    nik zuk hark guk zuek haiek ni zu hura gu zer nor non noiz nola zergatik
-    baina edo ere oso hemen han orain gero beti inoiz behin bat bi hiru
-    izan egin du dago daude zegoen zeuden dago dela direla zela ziren
-    ba bada baita bere beren ezta nahi behar""".split()
+    """
+    eta edo ez bai ba bada baita ezta baina ere ordea aldiz berriz ala al ote omen bait zeren ezen baldin nahiz
+    oso hain asko gutxi gehiago gehien guztiz bakarrik jada dagoeneko noski agian hala horrela honela orduan
+    hemen han hor hona hara horra hemendik handik hortik orain gero beti inoiz nehoiz behin oraindik
+    bat bi hiru lau bost sei zazpi zortzi bederatzi hamar
+    gabe baino bezala bezain arte buruz zehar gain azpi aurrean atzean
+    guztia guztiak guztiek guztien guztiei batzuk batzuek batzuei edozein edonor edonon edonoiz zenbait zenbat
+    ezer inor inon inork ezertarako ezein bestea bestelako beste
+    ni nik niri nire nigan zu zuk zuri zure zugan hura hark hari haren hau honek honi honen hori horrek horri horren
+    hauek hauen hauei horiek horien horiei haiek haien haiei gu guk guri gure zuek zuei zuen
+    bere beren geure zeure
+    zer zein nor nork nori noren non nola noiz zergatik zertarako nondik nora
+    izan ukan egon edin ezan ahal behar nahi
+    da dira zen ziren naiz zara gara zarete nintzen zinen ginen zineten dela direla zela zirela naizela zarela garela
+    du dut duzu dugu duzue dute zuen nuen zenuen genuen zenuten zuten dudan duen dutela duela
+    dago daude zegoen zeuden dagoen daudenak dauka daukat daukazu daukagu dauzka dauzkat
+    izango izateko izatea izaten izanda izanik egongo
+    """.split()
 )
 
-try:
-    import certifi
-    SSL_CTX = ssl.create_default_context(cafile=certifi.where())
-except ImportError:
-    SSL_CTX = ssl.create_default_context()
+# Letters only, so apostrophes and hyphens split tokens (Basque compounds like "ikus-entzunezko").
+TOKEN_RE = re.compile(r"[^\W\d_]+")
+# Dictionary forms (lemmas) may legitimately contain hyphens.
+LEMMA_RE = re.compile(r"[^\W\d_]+(?:-[^\W\d_]+)*")
 
-TOKEN_RE = re.compile(r"[a-zñçü]+(?:['’-][a-zñçü]+)*", re.IGNORECASE)
+SPEAKER_RE = re.compile(r"^[-–\s]*[A-ZÑÇÁÉÍÓÚÜ][A-ZÑÇÁÉÍÓÚÜ0-9 .'’]{1,24}:\s*")
+SOUND_RE = re.compile(r"\[[^\]]*\]|\([^)]*\)")
+DEDUPE_WINDOW = 4
+
+EXAMPLE_MIN, EXAMPLE_MAX = 20, 60
 
 
 def parse_subtitles(text: str) -> list[str]:
     """Return the dialogue lines from SRT / VTT / ASS content."""
     lines = []
-    text = text.lstrip("\ufeff")
+    recent: deque[str] = deque(maxlen=DEDUPE_WINDOW)
+    text = unicodedata.normalize("NFC", text.lstrip("\ufeff"))
     for raw in text.splitlines():
         line = raw.strip()
         if not line:
@@ -50,14 +64,43 @@ def parse_subtitles(text: str) -> list[str]:
             continue
         line = re.sub(r"<[^>]+>", "", line)  # html-ish tags
         line = re.sub(r"\{[^}]*\}", "", line)  # ASS override tags
-        line = line.replace("\\N", " ").replace("\\n", " ")
-        line = re.sub(r"[♪♫]", "", line).strip()
-        if line:
-            lines.append(line)
+        line = html.unescape(line)
+        line = line.replace("\\N", " ").replace("\\n", " ").replace("\\h", " ")
+        line = re.sub(r"[♪♫]", "", line)
+        line = SOUND_RE.sub("", line).strip()  # [musika], (barrez)
+        line = SPEAKER_RE.sub("", line).strip()  # JON: ...
+        letters = [c for c in line if c.isalpha()]
+        if len(letters) < 4 or not any(c.islower() for c in letters):  # signs, credits
+            continue
+        key = line.casefold()
+        if key in recent:  # overlapping cues / auto-caption repeats
+            continue
+        recent.append(key)
+        lines.append(line)
     return lines
 
 
-KEEP_POS = {"NOUN", "VERB", "ADJ", "ADV"}
+def load_known() -> set[str]:
+    if not KNOWN_FILE.exists():
+        return set()
+    return {
+        l.strip().lower()
+        for l in KNOWN_FILE.read_text(encoding="utf-8").splitlines()
+        if l.strip() and not l.startswith("#")
+    }
+
+
+def add_known(words: list[str]) -> int:
+    """Append new words to the known-words file; return how many were added."""
+    existing = load_known()
+    new = sorted({w.strip().lower() for w in words if w.strip()} - existing)
+    if new:
+        with KNOWN_FILE.open("a", encoding="utf-8") as f:
+            f.writelines(w + "\n" for w in new)
+    return len(new)
+
+
+KEEP_POS = {"NOUN", "VERB", "ADJ", "ADV"}  # drops PROPN, AUX, PRON, DET, NUM, INTJ, X, ...
 _NLP = None
 
 
@@ -80,8 +123,14 @@ def get_nlp():
 
 
 def regex_tokens(lines):
+    """Yield (line, [(token, capitalized_mid_sentence), ...])."""
     for line in lines:
-        yield line, [t.lower() for t in TOKEN_RE.findall(line)]
+        tokens = []
+        for m in TOKEN_RE.finditer(line):
+            before = line[:m.start()].rstrip(" -–—\"'“¿¡([")
+            sentence_start = not before or before[-1] in ".!?…:"
+            tokens.append((m.group().lower(), m.group()[0].isupper() and not sentence_start))
+        yield line, tokens
 
 
 def stanza_tokens(lines):
@@ -90,84 +139,61 @@ def stanza_tokens(lines):
     nlp = get_nlp()
     docs = nlp([stanza.Document([], text=l) for l in lines])
     for line, doc in zip(lines, docs):
-        lemmas = []
+        tokens = []
         for sent in doc.sentences:
-            for w in sent.words:
-                if w.upos in KEEP_POS and w.lemma and TOKEN_RE.fullmatch(w.lemma):
-                    lemmas.append(w.lemma.lower())
-        yield line, lemmas
+            for i, w in enumerate(sent.words):
+                if w.upos in KEEP_POS and w.lemma and LEMMA_RE.fullmatch(w.lemma):
+                    tokens.append((w.lemma.lower(), i > 0 and w.text[:1].isupper()))
+        yield line, tokens
 
 
-def extract_words(lines: list[str], min_len: int, min_freq: int, limit: int, use_stanza=False):
+def example_penalty(line: str) -> int:
+    n = len(line)
+    return max(EXAMPLE_MIN - n, n - EXAMPLE_MAX, 0)
+
+
+def extract_words(lines: list[str], min_len: int, min_freq: int, limit: int, use_stanza=False, known=frozenset()):
     counts: Counter = Counter()
-    examples: dict[str, str] = {}
+    examples: dict[str, tuple[int, str]] = {}
+    name_like: dict[str, bool] = {}  # only ever seen capitalized mid-sentence => probably a name
+    known_hits: set[str] = set()
     for line, tokens in (stanza_tokens(lines) if use_stanza else regex_tokens(lines)):
         seen = set()
-        for w in tokens:
+        for w, mid_cap in tokens:
             if len(w) < min_len or w in STOPWORDS:
                 continue
+            if w in known:
+                known_hits.add(w)
+                continue
             counts[w] += 1
-            if w not in seen and (w not in examples or len(line) < len(examples[w]) and len(line) > 15):
-                examples[w] = line
-            seen.add(w)
-    items = [(w, c) for w, c in counts.most_common() if c >= min_freq][:limit]
-    return [{"word": w, "count": c, "example": examples.get(w, "")} for w, c in items]
+            name_like[w] = name_like.get(w, True) and mid_cap
+            if w not in seen:
+                seen.add(w)
+                penalty = example_penalty(line)
+                if w not in examples or penalty < examples[w][0]:
+                    examples[w] = (penalty, line)
+    items = [(w, c) for w, c in counts.most_common() if c >= min_freq and not name_like[w]][:limit]
+    words = [{"word": w, "count": c, "example": examples[w][1]} for w, c in items]
+    return words, len(known_hits)
 
 
-def translate(word: str) -> str:
-    if word in CACHE:
-        return CACHE[word].lower()
-    url = "https://api.mymemory.translated.net/get?" + urllib.parse.urlencode(
-        {"q": word, "langpair": "eu|es"}
-    )
-    try:
-        with urllib.request.urlopen(url, timeout=10, context=SSL_CTX) as r:
-            data = json.load(r)
-        result = data["responseData"]["translatedText"].strip()
-        if data.get("responseStatus") != 200 or result.lower() == word:
-            return ""
-    except Exception:
-        return ""
-    CACHE[word] = result.lower()
-    return CACHE[word]
-
-
-def fetch_url(url: str) -> str:
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=20, context=SSL_CTX) as r:
-        raw = r.read()
-    for enc in ("utf-8-sig", "latin-1"):
-        try:
-            return raw.decode(enc)
-        except UnicodeDecodeError:
-            continue
-    return raw.decode("utf-8", errors="replace")
-
-
-def save_cache() -> None:
-    CACHE_FILE.write_text(json.dumps(CACHE, ensure_ascii=False, indent=1))
-
-
-def translate_all(words: list[dict]) -> None:
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        for item, tr in zip(words, pool.map(lambda i: translate(i["word"]), words)):
-            item["translation"] = tr
-    save_cache()
-
-
-def process(text: str, min_len=4, min_freq=1, limit=50, lemmatize=False, do_translate=True) -> dict:
+def process(text: str, min_len=4, min_freq=1, limit=50, lemmatize=True, do_translate=True, use_known=True) -> dict:
     """Run the full pipeline on subtitle text and return the result dict."""
     lines = parse_subtitles(text)
     use_stanza = lemmatize and stanza_available()
-    words = extract_words(lines, min_len, min_freq, limit, use_stanza)
-    if do_translate:
-        translate_all(words)
-    return {
+    words, known_skipped = extract_words(
+        lines, min_len, min_freq, limit, use_stanza, load_known() if use_known else frozenset()
+    )
+    result = {
         "words": words,
         "lines": len(lines),
         "engine": "stanza" if use_stanza else "regex",
         "stanzaMissing": lemmatize and not use_stanza,
+        "knownSkipped": known_skipped,
     }
+    if do_translate:
+        result.update(translate_all(words))
+    return result
 
 
 def format_remnote(words: list[dict], examples=True) -> str:

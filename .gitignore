@@ -25,3 +25,4 @@ translations_cache.json
 .DS_Store
 .idea/
 .vscode/
+known_words.txt
