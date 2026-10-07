@@ -47,6 +47,9 @@ class Handler(BaseHTTPRequestHandler):
                 lemmatize=bool(payload.get("lemmatize", True)),
                 do_translate=bool(payload.get("translate", True)),
                 use_known=bool(payload.get("useKnown", True)),
+                engine=payload.get("engine", "auto"),
+                jev=bool(payload.get("jev", True)),
+                min_useful=float(payload.get("minUseful", 0.5)),
             )
             self._json(result)
         except Exception as e:

@@ -17,7 +17,11 @@ def main() -> int:
     p.add_argument("--min-len", type=int, default=4)
     p.add_argument("--min-freq", type=int, default=1)
     p.add_argument("--limit", type=int, default=50)
-    p.add_argument("--no-lemmatize", action="store_true", help="skip stanza lemmatization (use plain word forms)")
+    p.add_argument("--engine", choices=["auto", "llm", "stanza", "regex"], default="auto",
+                   help="how to find headwords: llm (Jev filter + LLM lemmas), stanza, regex, or the best available (default)")
+    p.add_argument("--no-lemmatize", action="store_true", help="same as --engine regex (use plain word forms)")
+    p.add_argument("--no-jev", action="store_true", help="llm engine: skip the Jev relevance pre-filter")
+    p.add_argument("--min-useful", type=float, default=0.5, help="llm engine: Jev is_useful probability needed to keep a word")
     p.add_argument("--include-known", action="store_true", help="don't hide words from known_words.txt")
     p.add_argument("--mark-known", action="store_true", help="add the printed words to known_words.txt")
     p.add_argument("--no-translate", action="store_true")
@@ -41,9 +45,14 @@ def main() -> int:
         lemmatize=not args.no_lemmatize,
         do_translate=not args.no_translate,
         use_known=not args.include_known,
+        engine=args.engine,
+        jev=not args.no_jev,
+        min_useful=args.min_useful,
     )
     if result["stanzaMissing"]:
         print("warning: stanza not installed; used regex tokenizer", file=sys.stderr)
+    if result.get("jevError"):
+        print(f"warning: Jev filter incomplete: {result['jevError']}", file=sys.stderr)
     if result.get("translateError"):
         print(f"warning: {result['translateError']}", file=sys.stderr)
     if args.json:

@@ -5,7 +5,8 @@ import unicodedata
 from collections import Counter, deque
 from pathlib import Path
 
-from translate import translate_all
+from jev import filter_candidates
+from translate import LEMMA_RE, lemmatize_translate, llm_available, translate_all
 
 ROOT = Path(__file__).parent
 KNOWN_FILE = ROOT / "known_words.txt"
@@ -34,8 +35,6 @@ STOPWORDS = set(
 
 # Letters only, so apostrophes and hyphens split tokens (Basque compounds like "ikus-entzunezko").
 TOKEN_RE = re.compile(r"[^\W\d_]+")
-# Dictionary forms (lemmas) may legitimately contain hyphens.
-LEMMA_RE = re.compile(r"[^\W\d_]+(?:-[^\W\d_]+)*")
 
 SPEAKER_RE = re.compile(r"^[-–\s]*[A-ZÑÇÁÉÍÓÚÜ][A-ZÑÇÁÉÍÓÚÜ0-9 .'’]{1,24}:\s*")
 SOUND_RE = re.compile(r"\[[^\]]*\]|\([^)]*\)")
@@ -177,18 +176,72 @@ def extract_words(lines: list[str], min_len: int, min_freq: int, limit: int, use
     return words, len(known_hits)
 
 
-def process(text: str, min_len=4, min_freq=1, limit=50, lemmatize=True, do_translate=True, use_known=True) -> dict:
-    """Run the full pipeline on subtitle text and return the result dict."""
+OVERFETCH = 3  # candidate surface forms per wanted word; merging inflections shrinks the list
+
+
+def merge_lemmas(items: list[dict], known) -> tuple[list[dict], int]:
+    """Group surface forms (sorted by count, descending) under their lemma."""
+    merged: dict[str, dict] = {}
+    known_hits: set[str] = set()
+    for it in items:
+        lemma = it["word"] if it.get("lemma") is None else it["lemma"]
+        if not lemma:
+            continue
+        if lemma in known:
+            known_hits.add(lemma)
+            continue
+        m = merged.get(lemma)
+        if m is None:
+            merged[lemma] = {
+                "word": lemma, "count": it["count"], "translation": it["translation"],
+                "example": it["example"], "forms": [it["word"]],
+            }
+            continue
+        m["count"] += it["count"]
+        m["forms"].append(it["word"])
+        m["translation"] = m["translation"] or it["translation"]
+        if example_penalty(it["example"]) < example_penalty(m["example"]):
+            m["example"] = it["example"]
+    return list(merged.values()), len(known_hits)
+
+
+def resolve_engine(engine: str, lemmatize: bool, do_translate: bool) -> str:
+    if not lemmatize or engine == "regex":
+        return "regex"
+    if engine in ("auto", "llm") and do_translate and llm_available():
+        return "llm"
+    return "stanza" if stanza_available() else "regex"
+
+
+def process(
+    text: str, min_len=4, min_freq=1, limit=50, lemmatize=True, do_translate=True, use_known=True,
+    engine="auto", jev=True, min_useful=0.5,
+) -> dict:
+    """Run the full pipeline on subtitle text and return the result dict.
+
+    engine: "llm" (Jev filter + LLM lemma/translation), "stanza", "regex" or "auto" (best available).
+    """
     lines = parse_subtitles(text)
-    use_stanza = lemmatize and stanza_available()
-    words, known_skipped = extract_words(
-        lines, min_len, min_freq, limit, use_stanza, load_known() if use_known else frozenset()
-    )
+    known = load_known() if use_known else frozenset()
+    chosen = resolve_engine(engine, lemmatize, do_translate)
+    if chosen == "llm":
+        candidates, known_skipped = extract_words(lines, min_len, 1, limit * OVERFETCH, False, known)
+        result = {"lines": len(lines), "engine": "llm", "stanzaMissing": False, "candidates": len(candidates)}
+        if jev:
+            candidates, info = filter_candidates(candidates, min_useful)
+            result.update(info)
+        result.update(lemmatize_translate(candidates))
+        words, lemma_known = merge_lemmas(candidates, known)
+        words = [w for w in words if w["count"] >= min_freq][:limit]
+        result.update(words=words, knownSkipped=known_skipped + lemma_known)
+        return result
+
+    words, known_skipped = extract_words(lines, min_len, min_freq, limit, chosen == "stanza", known)
     result = {
         "words": words,
         "lines": len(lines),
-        "engine": "stanza" if use_stanza else "regex",
-        "stanzaMissing": lemmatize and not use_stanza,
+        "engine": chosen,
+        "stanzaMissing": lemmatize and engine != "regex" and chosen == "regex",
         "knownSkipped": known_skipped,
     }
     if do_translate:

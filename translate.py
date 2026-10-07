@@ -3,17 +3,18 @@
 Uses OpenRouter when OPENROUTER_API_KEY is set (in the environment or in a .env file).
 Set OPENROUTER_MODEL to change the model (default: google/gemini-2.5-flash).
 Without a key it falls back to MyMemory, which is much less accurate.
+
+`lemmatize_translate` additionally asks the model for the Basque dictionary headword of each inflected form.
 """
 import json
 import os
-import time
-import urllib.error
+import re
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from net import SSL_CTX
+from net import SSL_CTX, ApiError, post_json
 
 ROOT = Path(__file__).parent
 CACHE_FILE = ROOT / "translations_cache.json"
@@ -22,7 +23,8 @@ CACHE = json.loads(CACHE_FILE.read_text()) if CACHE_FILE.exists() else {}
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 DEFAULT_MODEL = "google/gemini-2.5-flash"
 BATCH_SIZE = 25
-RETRY_STATUS = {429, 500, 502, 503, 504}
+# Dictionary forms (lemmas) may legitimately contain hyphens.
+LEMMA_RE = re.compile(r"[^\W\d_]+(?:-[^\W\d_]+)*")
 
 SYSTEM_PROMPT = """You are a Basque-Spanish lexicographer helping a learner build flashcards from TV subtitles.
 You receive a JSON list of entries: {"id", "word", "context"}.
@@ -35,9 +37,20 @@ Rules for each translation:
 - No explanations, no part-of-speech labels, never repeat the Basque word.
 - If the word is a proper name, a typo or not Basque, use an empty string."""
 
-
-class TranslationError(Exception):
-    pass
+LEMMA_PROMPT = """You are a Basque-Spanish lexicographer helping a learner build flashcards from TV subtitles.
+You receive a JSON list of entries: {"id", "word", "context"}.
+"word" is a Basque word exactly as it appears in the subtitle line "context" (usually inflected).
+Reply with JSON only: {"entries": {"<id>": {"lemma": "<Basque headword>", "translation": "<Spanish>"}}}.
+Rules:
+- "lemma" is the standard dictionary headword (Euskaltzaindia / Elhuyar style) with every suffix removed:
+  nouns and adjectives without article, case or number (emakumeak -> emakume, etxeetan -> etxe);
+  verbs as the participle (dut/dira are auxiliaries, but ikusi, egin, joan are headwords);
+  keep derivational roots and hyphenated compounds as headwords. Use the context to resolve ambiguity.
+- "translation" is 1 to 3 short Spanish equivalents of the lemma separated by ", ", most fitting sense first.
+  Use root dictionary forms only: lowercase, verbs in infinitive, nouns in singular without article,
+  adjectives in masculine singular. No explanations, no part-of-speech labels, never repeat the Basque word.
+- Use {"lemma": "", "translation": ""} when the word is a proper name, a typo, not Basque, an interjection,
+  a conjugated auxiliary/light-verb form, or a function word (pronoun, particle, postposition, numeral)."""
 
 
 def load_env() -> None:
@@ -67,39 +80,61 @@ def _parse_json(content: str) -> dict:
     return json.loads(content[start:end + 1])
 
 
-def _llm_batch(batch: list[dict], key: str, model: str) -> list[str]:
-    entries = [{"id": str(i), "word": it["word"], "context": it["example"]} for i, it in enumerate(batch)]
-    body = json.dumps({
+def _chat_json(system: str, entries: list[dict], key: str, model: str, field: str) -> dict:
+    payload = {
         "model": model,
         "temperature": 0,
         "response_format": {"type": "json_object"},
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system},
             {"role": "user", "content": json.dumps(entries, ensure_ascii=False)},
         ],
-    }).encode()
-    headers = {
-        "Authorization": f"Bearer {key}",
-        "Content-Type": "application/json",
-        "X-Title": "subtitle-flashcards",
     }
-    last: Exception | None = None
-    for attempt in range(3):
+    return post_json(
+        OPENROUTER_URL, payload, key,
+        parse=lambda data: _parse_json(data["choices"][0]["message"]["content"])[field],
+    )
+
+
+def _llm_batch(batch: list[dict], key: str, model: str) -> list[str]:
+    entries = [{"id": str(i), "word": it["word"], "context": it["example"]} for i, it in enumerate(batch)]
+    result = _chat_json(SYSTEM_PROMPT, entries, key, model, "translations")
+    return [_clean(result.get(str(i)), it["word"]) for i, it in enumerate(batch)]
+
+
+def _lemma_batch(batch: list[dict], key: str, model: str) -> list[dict | None]:
+    entries = [{"id": str(i), "word": it["word"], "context": it["example"]} for i, it in enumerate(batch)]
+    result = _chat_json(LEMMA_PROMPT, entries, key, model, "entries")
+    out = []
+    for i in range(len(batch)):
+        entry = result.get(str(i))
+        if not isinstance(entry, dict):
+            out.append(None)
+            continue
+        lemma = str(entry.get("lemma") or "").strip().lower()
+        if not LEMMA_RE.fullmatch(lemma):
+            out.append({"lemma": "", "translation": ""})
+        else:
+            out.append({"lemma": lemma, "translation": _clean(entry.get("translation"), lemma)})
+    return out
+
+
+def _run_batches(todo: list[dict], fn) -> tuple[list, str | None]:
+    """Run fn over batches of `todo` concurrently; return ([(item, result)], first error)."""
+    batches = [todo[i:i + BATCH_SIZE] for i in range(0, len(todo), BATCH_SIZE)]
+
+    def run(batch):
         try:
-            req = urllib.request.Request(OPENROUTER_URL, data=body, headers=headers)
-            with urllib.request.urlopen(req, timeout=90, context=SSL_CTX) as r:
-                data = json.load(r)
-            result = _parse_json(data["choices"][0]["message"]["content"])["translations"]
-            return [_clean(result.get(str(i)), it["word"]) for i, it in enumerate(batch)]
-        except urllib.error.HTTPError as e:
-            detail = e.read()[:200].decode("utf-8", "replace")
-            last = TranslationError(f"OpenRouter HTTP {e.code}: {detail}")
-            if e.code not in RETRY_STATUS:
-                break
-        except (ValueError, KeyError, IndexError, AttributeError, urllib.error.URLError, TimeoutError) as e:
-            last = TranslationError(f"{type(e).__name__}: {e}")
-        time.sleep(2 ** attempt)
-    raise last
+            return batch, fn(batch), None
+        except ApiError as e:
+            return batch, [], str(e)
+
+    pairs, error = [], None
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        for batch, results, err in pool.map(run, batches):
+            error = error or err
+            pairs.extend(zip(batch, results))
+    return pairs, error
 
 
 def _translate_openrouter(words: list[dict], key: str, model: str) -> str | None:
@@ -109,23 +144,40 @@ def _translate_openrouter(words: list[dict], key: str, model: str) -> str | None
         item["translation"] = cached or ""
         if not cached:
             todo.append(item)
-    batches = [todo[i:i + BATCH_SIZE] for i in range(0, len(todo), BATCH_SIZE)]
-
-    def run(batch):
-        try:
-            return batch, _llm_batch(batch, key, model), None
-        except TranslationError as e:
-            return batch, [], str(e)
-
-    error = None
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        for batch, translations, err in pool.map(run, batches):
-            error = error or err
-            for item, tr in zip(batch, translations):
-                item["translation"] = tr
-                if tr:
-                    CACHE[f"{model}|{item['word']}|{item['example']}"] = tr
+    pairs, error = _run_batches(todo, lambda batch: _llm_batch(batch, key, model))
+    for item, tr in pairs:
+        item["translation"] = tr
+        if tr:
+            CACHE[f"{model}|{item['word']}|{item['example']}"] = tr
     return error
+
+
+def llm_available() -> bool:
+    load_env()
+    return bool(os.environ.get("OPENROUTER_API_KEY"))
+
+
+def lemmatize_translate(words: list[dict]) -> dict:
+    """Set item["lemma"] and item["translation"] on each word using the LLM.
+
+    lemma "" means the model rejected the word (name, typo, auxiliary, ...); None means it could not be processed.
+    """
+    load_env()
+    key = os.environ["OPENROUTER_API_KEY"]
+    model = os.environ.get("OPENROUTER_MODEL", DEFAULT_MODEL)
+    todo = []
+    for item in words:
+        cached = CACHE.get(f"lemma|{model}|{item['word']}|{item['example']}")
+        item["lemma"], item["translation"] = (cached["lemma"], cached["translation"]) if cached else (None, "")
+        if not cached:
+            todo.append(item)
+    pairs, error = _run_batches(todo, lambda batch: _lemma_batch(batch, key, model))
+    for item, res in pairs:
+        if res is not None:
+            item["lemma"], item["translation"] = res["lemma"], res["translation"]
+            CACHE[f"lemma|{model}|{item['word']}|{item['example']}"] = res
+    save_cache()
+    return {"translator": f"openrouter:{model}", "translateError": error}
 
 
 def _mymemory(word: str) -> str:
