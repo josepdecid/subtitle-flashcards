@@ -5,7 +5,7 @@ import unicodedata
 from collections import Counter, deque
 from pathlib import Path
 
-from jev import filter_candidates
+from jev import filter_candidates, reject_reason, score_candidates
 from translate import LEMMA_RE, lemmatize_translate, llm_available, translate_all
 
 ROOT = Path(__file__).parent
@@ -43,10 +43,23 @@ DEDUPE_WINDOW = 4
 EXAMPLE_MIN, EXAMPLE_MAX = 20, 60
 
 
-def parse_subtitles(text: str) -> list[str]:
-    """Return the dialogue lines from SRT / VTT / ASS content."""
-    lines = []
+TIME_RE = re.compile(r"(?:(\d+):)?(\d+):(\d+)(?:[.,](\d+))?")
+
+
+def parse_timestamp(text: str) -> float | None:
+    """Seconds from "00:01:02,500", "01:02.5" or ASS "0:01:02.50"."""
+    m = TIME_RE.search(text)
+    if not m:
+        return None
+    h, mi, sec, frac = m.groups()
+    return int(h or 0) * 3600 + int(mi) * 60 + int(sec) + (int(frac) / 10 ** len(frac) if frac else 0)
+
+
+def parse_cues(text: str) -> list[dict]:
+    """Return the dialogue lines from SRT / VTT / ASS content as {"t": start seconds or None, "text": str}."""
+    cues = []
     recent: deque[str] = deque(maxlen=DEDUPE_WINDOW)
+    start = None
     text = unicodedata.normalize("NFC", text.lstrip("\ufeff"))
     for raw in text.splitlines():
         line = raw.strip()
@@ -54,10 +67,14 @@ def parse_subtitles(text: str) -> list[str]:
             continue
         if line.startswith("WEBVTT") or line.startswith(("NOTE", "STYLE", "Kind:", "Language:")):
             continue
-        if "-->" in line or re.fullmatch(r"\d+", line):
+        if "-->" in line:
+            start = parse_timestamp(line.split("-->")[0])
+            continue
+        if re.fullmatch(r"\d+", line):
             continue
         if line.startswith("Dialogue:"):  # ASS/SSA
             parts = line.split(",", 9)
+            start = parse_timestamp(parts[1]) if len(parts) == 10 else None
             line = parts[9] if len(parts) == 10 else ""
         elif re.match(r"^\[(Script Info|V4\+? Styles|Events)\]|^(Format|Style):", line):
             continue
@@ -75,8 +92,12 @@ def parse_subtitles(text: str) -> list[str]:
         if key in recent:  # overlapping cues / auto-caption repeats
             continue
         recent.append(key)
-        lines.append(line)
-    return lines
+        cues.append({"t": start, "text": line})
+    return cues
+
+
+def parse_subtitles(text: str) -> list[str]:
+    return [c["text"] for c in parse_cues(text)]
 
 
 def load_known() -> set[str]:
@@ -151,19 +172,14 @@ def example_penalty(line: str) -> int:
     return max(EXAMPLE_MIN - n, n - EXAMPLE_MAX, 0)
 
 
-def extract_words(lines: list[str], min_len: int, min_freq: int, limit: int, use_stanza=False, known=frozenset()):
+def analyze_words(lines: list[str], min_len: int, min_freq: int, limit: int, use_stanza=False, known=frozenset()):
+    """Count every word and say why it is discarded: a dict per word with reason None (kept) or a reason code."""
     counts: Counter = Counter()
     examples: dict[str, tuple[int, str]] = {}
     name_like: dict[str, bool] = {}  # only ever seen capitalized mid-sentence => probably a name
-    known_hits: set[str] = set()
     for line, tokens in (stanza_tokens(lines) if use_stanza else regex_tokens(lines)):
         seen = set()
         for w, mid_cap in tokens:
-            if len(w) < min_len or w in STOPWORDS:
-                continue
-            if w in known:
-                known_hits.add(w)
-                continue
             counts[w] += 1
             name_like[w] = name_like.get(w, True) and mid_cap
             if w not in seen:
@@ -171,9 +187,30 @@ def extract_words(lines: list[str], min_len: int, min_freq: int, limit: int, use
                 penalty = example_penalty(line)
                 if w not in examples or penalty < examples[w][0]:
                     examples[w] = (penalty, line)
-    items = [(w, c) for w, c in counts.most_common() if c >= min_freq and not name_like[w]][:limit]
-    words = [{"word": w, "count": c, "example": examples[w][1]} for w, c in items]
-    return words, len(known_hits)
+    items, kept = [], 0
+    for w, c in counts.most_common():
+        if w in STOPWORDS:
+            reason = "stopword"
+        elif len(w) < min_len:
+            reason = "short"
+        elif w in known:
+            reason = "known"
+        elif name_like[w]:
+            reason = "name"
+        elif c < min_freq:
+            reason = "freq"
+        elif kept >= limit:
+            reason = "limit"
+        else:
+            reason, kept = None, kept + 1
+        items.append({"word": w, "count": c, "example": examples[w][1], "reason": reason})
+    return items
+
+
+def extract_words(lines: list[str], min_len: int, min_freq: int, limit: int, use_stanza=False, known=frozenset()):
+    items = analyze_words(lines, min_len, min_freq, limit, use_stanza, known)
+    words = [{k: it[k] for k in ("word", "count", "example")} for it in items if not it["reason"]]
+    return words, sum(it["reason"] == "known" for it in items)
 
 
 OVERFETCH = 3  # candidate surface forms per wanted word; merging inflections shrinks the list
@@ -247,6 +284,43 @@ def process(
     if do_translate:
         result.update(translate_all(words))
     return result
+
+
+def find_candidates(
+    lines: list[str], min_len=4, min_freq=1, limit=150, use_known=True, engine="auto", jev=True, min_useful=0.5,
+) -> dict:
+    """Step 3: list every word with the reason it was discarded (None = will be translated)."""
+    known = load_known() if use_known else frozenset()
+    chosen = resolve_engine(engine, True, True)
+    words = analyze_words(lines, min_len, min_freq, limit, chosen == "stanza", known)
+    result = {"engine": chosen, "stanzaMissing": engine != "regex" and chosen == "regex"}
+    if chosen == "llm" and jev:
+        pending = [w for w in words if not w["reason"]]
+        scores, info = score_candidates(pending)
+        for w, score in zip(pending, scores):
+            w["scores"] = score
+            w["reason"] = reject_reason(score, min_useful)
+        result.update(info)
+    result["words"] = words
+    return result
+
+
+def translate_words(items: list[dict], engine: str, use_known=True) -> dict:
+    """Step 4: lemmatize (LLM engine) and translate the chosen words. Words dropped on the way come back with a note."""
+    items = [dict(it) for it in items]
+    if engine != "llm" or not llm_available():
+        result = translate_all(items)
+        return {"words": items, **result}
+    known = load_known() if use_known else frozenset()
+    result = lemmatize_translate(items)
+    words, _ = merge_lemmas(items, known)
+    for it in items:
+        lemma = it.get("lemma")
+        note = "rejected by the LLM (name, typo, auxiliary or function word)" if lemma == "" else (
+            "already in known words" if lemma in known else None)
+        if note:
+            words.append({"word": it["word"], "count": it["count"], "translation": "", "example": it["example"], "note": note})
+    return {"words": words, **result}
 
 
 def format_remnote(words: list[dict], examples=True) -> str:

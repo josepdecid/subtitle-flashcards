@@ -7,7 +7,7 @@ Run: python3 server.py   then open http://localhost:8000
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from core import ROOT, add_known, process
+from core import ROOT, add_known, find_candidates, parse_cues, process, translate_words
 from net import fetch_url
 
 
@@ -32,10 +32,27 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(404)
 
     def do_POST(self):
-        if self.path not in ("/api/extract", "/api/known"):
-            return self.send_error(404)
+        if self.path not in ("/api/extract", "/api/known", "/api/parse", "/api/candidates", "/api/translate"):
+            return self._json({"error": f"Unknown endpoint {self.path}"}, 404)
         try:
             payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            if self.path == "/api/parse":
+                cues = parse_cues(payload.get("text") or fetch_url(payload["url"]))
+                return self._json({"lines": [{"t": c["t"], "s": c["text"]} for c in cues]})
+            if self.path == "/api/candidates":
+                return self._json(find_candidates(
+                    payload["lines"],
+                    min_len=int(payload.get("minLen", 4)),
+                    min_freq=int(payload.get("minFreq", 1)),
+                    limit=int(payload.get("limit", 150)),
+                    use_known=bool(payload.get("useKnown", True)),
+                    engine=payload.get("engine", "auto"),
+                    jev=bool(payload.get("jev", True)),
+                    min_useful=float(payload.get("minUseful", 0.5)),
+                ))
+            if self.path == "/api/translate":
+                return self._json(translate_words(
+                    payload["words"], payload.get("engine", "auto"), bool(payload.get("useKnown", True))))
             if self.path == "/api/known":
                 return self._json({"added": add_known(payload.get("words", []))})
             text = payload.get("text") or fetch_url(payload["url"])

@@ -45,16 +45,16 @@ def _ask(item: dict, key: str, model: str) -> dict:
     return post_json(JEV_URL, payload, key, parse=parse, timeout=30)
 
 
-def filter_candidates(words: list[dict], min_useful: float = 0.5) -> tuple[list[dict], dict]:
-    """Drop proper names and unhelpful words; return (kept, info). Words Jev can't judge are kept."""
+def score_candidates(words: list[dict]) -> tuple[list[dict | None], dict]:
+    """Ask Jev about each word; returns (scores aligned with `words`, info). Words Jev can't judge get None."""
     load_env()
     key = os.environ["OPENROUTER_API_KEY"]
     model = os.environ.get("JEV_MODEL", DEFAULT_JEV_MODEL)
-    scores: dict[int, dict | None] = {}
+    scores: list[dict | None] = []
     todo = []
     for i, item in enumerate(words):
         cached = CACHE.get(f"jev|{model}|{item['word']}|{item['example']}")
-        scores[i] = cached
+        scores.append(cached)
         if not cached:
             todo.append(i)
 
@@ -73,11 +73,21 @@ def filter_candidates(words: list[dict], min_useful: float = 0.5) -> tuple[list[
                 scores[i] = res
                 CACHE[f"jev|{model}|{words[i]['word']}|{words[i]['example']}"] = res
     save_cache()
+    return scores, {"jevModel": model, "jevError": error}
 
-    kept = []
-    for i, item in enumerate(words):
-        s = scores[i]
-        if s and (s["name"] > MAX_NAME_PROB or s["useful"] < min_useful):
-            continue
-        kept.append(item)
-    return kept, {"jevModel": model, "jevDropped": len(words) - len(kept), "jevError": error}
+
+def reject_reason(score: dict | None, min_useful: float = 0.5) -> str | None:
+    if not score:
+        return None
+    if score["name"] > MAX_NAME_PROB:
+        return "jev_name"
+    if score["useful"] < min_useful:
+        return "jev_useless"
+    return None
+
+
+def filter_candidates(words: list[dict], min_useful: float = 0.5) -> tuple[list[dict], dict]:
+    """Drop proper names and unhelpful words; return (kept, info). Words Jev can't judge are kept."""
+    scores, info = score_candidates(words)
+    kept = [item for item, s in zip(words, scores) if not reject_reason(s, min_useful)]
+    return kept, {**info, "jevDropped": len(words) - len(kept)}
