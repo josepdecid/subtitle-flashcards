@@ -1,28 +1,118 @@
 @import "tailwindcss";
 
+/* Theme tokens. Surfaces, ink and muted text swap for dark mode; the pastel accents stay the same
+   and always carry dark text (on-accent). */
+:root {
+  --paper: #fff6e5;
+  --surface: #ffffff;
+  --sunken: #f6efe2;
+  --ink: #161616;
+  --muted: #5c564e;
+  --line: #e8dfcc;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #16140f;
+    --surface: #221f19;
+    --sunken: #2c2820;
+    --ink: #f2e8d5;
+    --muted: #b3a994;
+    --line: #3a352c;
+  }
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-sunken: var(--sunken);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --shadow-hard: 4px 4px 0 0 var(--ink);
+  --shadow-hard-sm: 2px 2px 0 0 var(--ink);
+  --shadow-hard-lg: 6px 6px 0 0 var(--ink);
+}
+
+@theme {
+  --color-on-accent: #161616;
+  --color-tomato: #ff6b4a;
+  --color-butter: #ffe58a;
+  --color-mint: #b8f2d0;
+  --color-lilac: #d9ccff;
+  --color-peach: #ffc9b8;
+  --font-sans: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
 @layer base {
-  /* Native controls (scrollbars, select menus, date pickers) follow the light/dark theme. */
+  /* Native controls (scrollbars, select menus) follow the light/dark theme. */
   :root { color-scheme: light dark; }
   /* Tailwind v4 no longer gives buttons a pointer cursor. */
   button:not(:disabled), [role="button"]:not(:disabled) { cursor: pointer; }
+  ::selection { background: var(--color-butter); color: var(--color-on-accent); }
 }
 
 @layer components {
-  .card { @apply rounded-2xl border border-slate-200 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900; }
-  .card-head { @apply border-b border-slate-200 p-4 dark:border-slate-800; }
-  .card-foot { @apply flex items-center gap-3 border-t border-slate-200 p-4 dark:border-slate-800; }
-  .card-title { @apply font-semibold; }
-  .field { @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-hidden focus:ring-2 focus:ring-indigo-500/30 dark:border-slate-700 dark:bg-slate-950; }
-  .lbl { @apply mb-1 block text-xs font-medium text-slate-500; }
-  .btn-ghost { @apply rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium hover:bg-slate-100 disabled:cursor-default disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800; }
-  .btn-primary { @apply rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-xs hover:bg-indigo-700 disabled:cursor-wait disabled:opacity-70; }
-  .pill { @apply rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium dark:bg-slate-800; }
-  .toggle { @apply flex cursor-pointer items-center gap-2; }
-  .toggle input { @apply h-4 w-4 rounded border-slate-300 accent-indigo-600; }
-  .thead { @apply sticky top-0 bg-white text-left text-xs uppercase tracking-wide text-slate-500 dark:bg-slate-900; }
-  .stat { @apply rounded-xl bg-slate-100 px-3 py-2 dark:bg-slate-800; }
+  .card { @apply rounded-[20px] border-2 border-ink bg-surface shadow-hard; }
+
+  .title { @apply text-4xl font-extrabold leading-[0.95] tracking-[-0.04em] sm:text-5xl; }
+  .hl { @apply inline-block -rotate-2 rounded-xl border-2 border-ink bg-butter px-2 text-on-accent; }
+  .lead { @apply mt-3 max-w-2xl text-base text-muted sm:text-lg; }
+
+  .btn-primary { @apply inline-flex items-center justify-center gap-2 rounded-xl border-2 px-4 py-2 text-sm font-bold transition select-none active:translate-x-0.5 active:translate-y-0.5 active:shadow-none disabled:pointer-events-none disabled:opacity-50 border-ink bg-tomato text-on-accent shadow-hard-sm hover:-translate-x-px hover:-translate-y-px hover:shadow-hard; }
+  .btn-ghost { @apply inline-flex items-center justify-center gap-2 rounded-xl border-2 px-4 py-2 text-sm font-bold transition select-none active:translate-x-0.5 active:translate-y-0.5 active:shadow-none disabled:pointer-events-none disabled:opacity-50 border-ink bg-surface hover:bg-sunken; }
+  /* Secondary button on the dark action bar. */
+  .btn-bar { @apply inline-flex items-center justify-center gap-2 rounded-xl border-2 px-4 py-2 text-sm font-bold transition select-none active:translate-x-0.5 active:translate-y-0.5 active:shadow-none disabled:pointer-events-none disabled:opacity-50 border-paper/40 text-paper hover:bg-paper/10; }
+  .btn-lg { @apply px-5 py-3 text-base; }
+
+  .field { @apply w-full rounded-xl border-2 border-ink bg-surface px-3 py-2 text-sm placeholder:text-muted focus:ring-4 focus:ring-tomato/40 focus:outline-none; }
+  .lbl { @apply mb-1 block font-mono text-[11px] font-medium tracking-wider text-muted uppercase; }
+  .pill { @apply inline-flex items-center rounded-full border-2 border-ink px-2.5 py-0.5 font-mono text-xs font-medium; }
+  .toggle { @apply flex cursor-pointer items-center gap-2 font-medium; }
+
+  .tbox { @apply overflow-auto rounded-2xl border-2 border-ink bg-surface; }
+  .thead { @apply sticky top-0 z-10 bg-sunken text-left font-mono text-[11px] tracking-wider text-muted uppercase shadow-[inset_0_-2px_0_0_var(--ink)]; }
+
+  .stat { @apply rounded-2xl border-2 border-ink px-4 py-3 text-on-accent shadow-hard-sm; }
+
+  /* Step 4 word card. */
+  .wcard { @apply relative flex cursor-pointer flex-col gap-3 rounded-[18px] border-2 border-ink bg-surface p-4 shadow-hard transition hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-hard-lg; }
+  .wcard.off { @apply border-dashed bg-transparent shadow-none hover:translate-x-0 hover:translate-y-0 hover:shadow-none; }
+  .wcard-word { @apply w-full min-w-0 rounded-md bg-transparent text-[28px] leading-tight font-extrabold tracking-[-0.03em] focus:ring-4 focus:ring-tomato/40 focus:outline-none; }
+  .wcard.off .wcard-word { @apply text-muted line-through; }
+  .wcard-tr { @apply w-full min-w-0 rounded-[10px] border-2 border-transparent bg-sunken px-2.5 py-1.5 text-[15px] focus:border-ink focus:outline-none; }
 }
 
+/* Chunky checkbox used everywhere. */
+.chk, .toggle input[type="checkbox"] {
+  appearance: none;
+  display: grid;
+  place-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  border: 2px solid var(--ink);
+  border-radius: 7px;
+  background: var(--surface);
+  cursor: pointer;
+}
+.chk:checked, .toggle input[type="checkbox"]:checked { background: var(--ink); }
+.chk:checked::after, .toggle input[type="checkbox"]:checked::after {
+  content: "";
+  width: 10px;
+  height: 5px;
+  border: 2.5px solid var(--surface);
+  border-top: 0;
+  border-right: 0;
+  transform: translateY(-1px) rotate(-45deg);
+}
+/* Inverted checkbox for the dark action bar. */
+.chk-inv { border-color: var(--paper); background: transparent; }
+.chk-inv:checked { background: var(--paper); }
+.chk-inv:checked::after { border-color: var(--ink); }
+.chk:focus-visible, .toggle input[type="checkbox"]:focus-visible { outline: 3px solid var(--color-tomato); outline-offset: 2px; }
+
 .hatch {
-  background-image: repeating-linear-gradient(45deg, rgba(148, 163, 184, 0.28) 0 6px, transparent 6px 12px);
+  background-image: repeating-linear-gradient(45deg, color-mix(in srgb, var(--ink) 9%, transparent) 0 6px, transparent 6px 12px);
 }

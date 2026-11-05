@@ -25,27 +25,29 @@ const state = {
   candKey: '', engine: 'auto',
   words: [],          // {word, translation, count, example, keep, note}
   wordKey: '',
-  generated: false,
 };
+
+// Pastel tints that cycle through stat tiles and word cards.
+const TINTS = ['bg-butter', 'bg-mint', 'bg-lilac', 'bg-peach'];
 
 // ---------- helpers ----------
 let toastTimer;
 function toast(msg) {
   const t = $('toast');
   t.textContent = msg;
-  t.classList.remove('opacity-0', 'translate-y-4');
+  t.classList.remove('opacity-0', '-translate-y-4');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.add('opacity-0', 'translate-y-4'), 2000);
+  toastTimer = setTimeout(() => t.classList.add('opacity-0', '-translate-y-4'), 2000);
 }
 
 function setStatus(n, msg, kind = 'info') {
   const e = $('status' + n);
   e.textContent = msg;
   e.style.whiteSpace = 'pre-line';
-  e.className = 'text-sm ' + (msg ? 'rounded-lg px-3 py-2 ' + ({
-    info: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
-    error: 'bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300',
-    ok: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
+  e.className = 'text-sm ' + (msg ? 'rounded-xl border-2 border-ink px-3 py-2 font-medium text-on-accent ' + ({
+    info: 'bg-lilac',
+    error: 'bg-peach',
+    ok: 'bg-mint',
   })[kind] : '');
 }
 
@@ -78,14 +80,12 @@ function renderStepper() {
   ol.innerHTML = '';
   STEPS.forEach((name, i) => {
     const n = i + 1;
-    const reachable = n <= state.maxStep;
-    const b = el('button', 'flex items-center gap-2 rounded-full px-2 py-1 transition ' +
-      (n === state.step ? 'font-semibold' : reachable ? 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800' : 'cursor-default text-slate-400'));
+    const reachable = n <= state.maxStep, current = n === state.step;
+    const b = el('button', 'flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm transition ' +
+      (current ? 'bg-ink font-bold text-paper' : reachable ? 'font-medium hover:bg-sunken' : 'cursor-default text-muted'));
     b.disabled = !reachable;
-    const dot = el('span', 'flex h-6 w-6 items-center justify-center rounded-full text-xs ' +
-      (n === state.step ? 'bg-indigo-600 text-white' : n < state.step ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800'),
-      n < state.step ? '✓' : String(n));
-    b.append(dot, el('span', 'hidden sm:inline', name));
+    if (current) b.setAttribute('aria-current', 'step');
+    b.append(el('span', 'font-mono text-xs', n < state.step ? '✓' : String(n)), el('span', current ? '' : 'hidden md:inline', name));
     b.onclick = () => go(n);
     const li = el('li');
     li.append(b);
@@ -104,13 +104,15 @@ document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => go(+b.data
 
 // ---------- step 1: source ----------
 let mode = 'url';
-const ACTIVE = ['bg-white', 'shadow-xs', 'dark:bg-slate-900'];
+const ACTIVE = ['bg-ink', 'text-paper'];
 function setMode(m) {
   mode = m;
   $('paneUrl').hidden = m !== 'url';
   $('paneFile').hidden = m !== 'file';
-  for (const [id, on] of [['tabUrl', m === 'url'], ['tabFile', m === 'file']])
+  for (const [id, on] of [['tabUrl', m === 'url'], ['tabFile', m === 'file']]) {
     ACTIVE.forEach(c => $(id).classList.toggle(c, on));
+    $(id).setAttribute('aria-selected', String(on));
+  }
 }
 $('tabUrl').onclick = () => setMode('url');
 $('tabFile').onclick = () => setMode('file');
@@ -118,11 +120,11 @@ setMode('url');
 
 function setFile(f) { $('fileName').textContent = f ? f.name : 'Drop a file or click to browse'; }
 $('file').onchange = () => setFile($('file').files[0]);
-$('drop').ondragover = e => { e.preventDefault(); $('drop').classList.add('border-indigo-400'); };
-$('drop').ondragleave = () => $('drop').classList.remove('border-indigo-400');
+$('drop').ondragover = e => { e.preventDefault(); $('drop').classList.add('bg-butter/40'); };
+$('drop').ondragleave = () => $('drop').classList.remove('bg-butter/40');
 $('drop').ondrop = e => {
   e.preventDefault();
-  $('drop').classList.remove('border-indigo-400');
+  $('drop').classList.remove('bg-butter/40');
   if (e.dataTransfer.files.length) { $('file').files = e.dataTransfer.files; setFile(e.dataTransfer.files[0]); }
 };
 
@@ -242,9 +244,9 @@ function renderStats() {
     ['Skipped lines', state.lines.length - keptLines, plural(words - keptWords, 'word')],
     ['Duration', last ? fmtTime(last.t) : '–', ''],
   ];
-  $('stats').replaceChildren(...cards.map(([label, value, sub]) => {
-    const c = el('div', 'stat');
-    c.append(el('div', 'text-xs text-slate-500', label), el('div', 'text-xl font-semibold tabular-nums', String(value)), el('div', 'h-4 text-xs text-slate-500', sub));
+  $('stats').replaceChildren(...cards.map(([label, value, sub], i) => {
+    const c = el('div', 'stat ' + TINTS[i]);
+    c.append(el('div', 'font-mono text-[11px] uppercase tracking-wider opacity-75', label), el('div', 'text-3xl font-extrabold tabular-nums tracking-tight', String(value)), el('div', 'h-4 text-xs font-medium opacity-75', sub));
     return c;
   }));
   $('toWords').disabled = keptLines === 0;
@@ -253,8 +255,8 @@ function renderStats() {
 
 function renderSections() {
   $('sections').replaceChildren(...state.sections.map((s, i) => {
-    const li = el('li', 'hatch flex items-center gap-2 rounded-full border border-slate-300 px-3 py-1 text-xs dark:border-slate-700');
-    const rm = el('button', 'text-slate-500 hover:text-red-600', '✕');
+    const li = el('li', 'hatch flex items-center gap-2 rounded-full border-2 border-ink bg-surface py-1 pr-1.5 pl-3 text-xs font-medium');
+    const rm = el('button', 'grid h-6 w-6 place-content-center rounded-full hover:bg-tomato hover:text-on-accent', '✕');
     rm.title = 'Remove this skip';
     rm.onclick = () => { state.sections.splice(i, 1); renderPreview(); };
     li.append(el('span', '', `${s.label} · ${plural(s.b - s.a + 1, 'line')}`), rm);
@@ -264,9 +266,9 @@ function renderSections() {
 
 function lineRow(i, skipped) {
   const l = state.lines[i];
-  const row = el('div', 'flex gap-3 px-3 py-1 ' + (skipped ? 'hatch text-slate-400 line-through decoration-slate-300 dark:text-slate-500' : ''));
+  const row = el('div', 'flex gap-4 px-4 py-1 ' + (skipped ? 'hatch text-muted line-through' : ''));
   row.append(
-    el('span', 'w-12 shrink-0 text-right text-xs tabular-nums text-slate-400', fmtTime(l.t) || String(i + 1)),
+    el('span', 'w-14 shrink-0 pt-0.5 text-right font-mono text-xs text-muted', fmtTime(l.t) || String(i + 1)),
     el('span', '', l.s));
   return row;
 }
@@ -281,11 +283,11 @@ function renderPreview() {
     while (j + 1 < n && mask[j + 1]) j++;
     const open = state.expanded.has(i), start = i;
     const t0 = state.lines[i].t, t1 = state.lines[j].t;
-    const head = el('button', 'hatch flex w-full items-center gap-2 border-y border-slate-200 px-3 py-1.5 text-left text-xs font-medium text-slate-500 hover:bg-slate-100 dark:border-slate-800 dark:hover:bg-slate-800');
+    const head = el('button', 'hatch my-1 flex w-full items-center gap-2 border-y-2 border-dashed border-ink px-4 py-2 text-left text-xs font-bold hover:bg-sunken');
     head.append(
       el('span', '', open ? '▾' : '▸'),
       el('span', '', `${plural(j - i + 1, 'line')} skipped` + (t0 != null ? ` · ${fmtTime(t0)} – ${fmtTime(t1)}` : '')),
-      el('span', 'ml-auto font-normal', open ? 'Collapse' : 'Expand'));
+      el('span', 'ml-auto font-medium text-muted', open ? 'Collapse' : 'Expand'));
     head.onclick = () => { open ? state.expanded.delete(start) : state.expanded.add(start); renderPreview(); };
     frag.append(head);
     if (open) for (let k = i; k <= j; k++) frag.append(lineRow(k, true));
@@ -307,6 +309,10 @@ const REASONS = {
   jev_name: 'Jev: proper name',
   jev_useless: 'Jev: not useful',
   manual: 'Excluded manually',
+};
+const REASON_TINT = {
+  stopword: 'bg-butter', short: 'bg-butter', freq: 'bg-butter', limit: 'bg-butter',
+  known: 'bg-mint', name: 'bg-lilac', jev_name: 'bg-lilac', jev_useless: 'bg-peach', manual: 'bg-peach',
 };
 const included = c => c.override ?? !c.reason;
 const reasonCode = c => c.override === false ? 'manual' : c.reason;
@@ -332,9 +338,10 @@ function renderCands() {
   $('skipCount').textContent = plural(skip.length, 'word');
 
   const checkbox = (c, on) => {
-    const cb = el('input', 'h-4 w-4 accent-indigo-600');
+    const cb = el('input', 'chk');
     cb.type = 'checkbox';
     cb.checked = on;
+    cb.setAttribute('aria-label', (on ? 'Discard ' : 'Include ') + c.word);
     cb.onchange = () => setIncluded(c, cb.checked);
     return cb;
   };
@@ -346,13 +353,13 @@ function renderCands() {
 
   const keptFrag = document.createDocumentFragment();
   for (const c of keep) {
-    const tr = el('tr', 'align-top hover:bg-slate-50 dark:hover:bg-slate-800/50');
+    const tr = el('tr', 'align-top hover:bg-sunken');
     const jev = c.scores ? `${pct(c.scores.useful)} useful · ${pct(c.scores.name)} name` : '–';
     tr.append(
-      cell('px-2 py-1.5', checkbox(c, true)), cell('px-2 py-1.5 font-medium', c.word),
-      cell('px-2 py-1.5 text-right tabular-nums text-slate-500', String(c.count)),
-      cell('whitespace-nowrap px-2 py-1.5 text-xs text-slate-500', jev),
-      cell('px-2 py-1.5 text-xs text-slate-500', c.example));
+      cell('px-3 py-2', checkbox(c, true)), cell('px-2 py-2 text-base font-bold', c.word),
+      cell('px-2 py-2.5 text-right font-mono text-xs text-muted', String(c.count)),
+      cell('whitespace-nowrap px-2 py-2.5 font-mono text-xs text-muted', jev),
+      cell('px-3 py-2.5 text-xs text-muted', c.example));
     keptFrag.append(tr);
   }
   $('keptRows').replaceChildren(keptFrag);
@@ -367,12 +374,13 @@ function renderCands() {
   for (const c of skip) {
     if (sel.value && reasonCode(c) !== sel.value) continue;
     if (q && !c.word.includes(q)) continue;
-    const tr = el('tr', 'align-top text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800/50');
+    const tr = el('tr', 'align-top hover:bg-sunken');
+    const reason = el('span', `pill ${REASON_TINT[reasonCode(c)] || 'bg-butter'} whitespace-nowrap font-sans text-on-accent`, reasonText(c));
     tr.append(
-      cell('px-2 py-1.5', checkbox(c, false)), cell('px-2 py-1.5 font-medium', c.word),
-      cell('px-2 py-1.5 text-right tabular-nums', String(c.count)),
-      cell('whitespace-nowrap px-2 py-1.5 text-xs', reasonText(c)),
-      cell('hidden px-2 py-1.5 text-xs md:table-cell', c.example));
+      cell('px-3 py-2', checkbox(c, false)), cell('px-2 py-2 font-medium text-muted', c.word),
+      cell('px-2 py-2.5 text-right font-mono text-xs text-muted', String(c.count)),
+      cell('px-2 py-2', reason),
+      cell('hidden px-3 py-2.5 text-xs text-muted md:table-cell', c.example));
     skipFrag.append(tr);
   }
   $('skipRows').replaceChildren(skipFrag);
@@ -423,8 +431,6 @@ $('toTranslate').onclick = () => busy($('toTranslate'), 'Translating…', async 
     const data = await translateWords(chosen, state.engine, $('useKnown').checked);
     state.words = data.words.map(w => ({ ...w, keep: !w.note }));
     state.wordKey = key;
-    state.generated = false;
-    $('outCard').hidden = true;
     $('search').value = '';
     const warn = [];
     if (data.translateError) warn.push('Translation warning: ' + data.translateError);
@@ -439,32 +445,44 @@ $('toTranslate').onclick = () => busy($('toTranslate'), 'Translating…', async 
   }
 });
 
+function setKeep(w, v) {
+  w.keep = v;
+  w.cb.checked = v;
+  w.el.classList.toggle('off', !v);
+}
+
 function renderWords() {
   const frag = document.createDocumentFragment();
-  state.words.forEach(w => {
-    const tr = el('tr', 'align-top hover:bg-slate-50 dark:hover:bg-slate-800/50' + (w.keep ? '' : ' opacity-50'));
-    const td = (cls, ...nodes) => { const c = el('td', cls); c.append(...nodes); return c; };
-    const cb = el('input', 'block h-4 w-4 accent-indigo-600');
+  state.words.forEach((w, i) => {
+    const card = el('div', 'wcard');
+    const cb = el('input', 'chk');
     cb.type = 'checkbox';
-    cb.checked = w.keep;
-    cb.onchange = () => { w.keep = cb.checked; tr.classList.toggle('opacity-50', !w.keep); build(); };
-    const src = el('input', 'field min-w-24 font-medium');
-    src.size = 1;
+    cb.setAttribute('aria-label', 'Keep this card');
+    cb.onchange = () => { setKeep(w, cb.checked); build(); };
+    // Clicking anywhere on the card that isn't a control toggles it.
+    card.onclick = e => { if (!e.target.closest('input, button, a')) { setKeep(w, !w.keep); build(); } };
+
+    const top = el('div', 'flex items-center gap-2');
+    top.append(cb, el('span', `pill ml-auto ${TINTS[i % TINTS.length]} text-on-accent`, `×${w.count}`));
+
+    const src = el('input', 'wcard-word');
     src.value = w.word;
+    src.setAttribute('aria-label', 'Basque word');
     src.oninput = () => { w.word = src.value; build(); };
     if (w.forms) src.title = w.forms.join(', ');
-    const tr_ = el('input', 'field min-w-24');
-    tr_.size = 1;
-    tr_.value = w.translation || '';
-    tr_.oninput = () => { w.translation = tr_.value; build(); };
-    const trCell = td('px-2 py-1.5', tr_);
-    if (w.note) trCell.append(el('div', 'mt-1 text-xs text-amber-600 dark:text-amber-400', w.note));
-    tr.append(
-      td('px-2 pt-[15px] pb-1.5', cb), td('px-2 py-1.5', src), trCell,
-      td('pr-4 pl-2 pt-[13px] pb-1.5 md:pr-2 text-right tabular-nums text-slate-500', String(w.count)),
-      td('hidden px-2 pt-[15px] pb-1.5 text-xs text-slate-500 md:table-cell', w.example || ''));
-    w.el = tr; w.cb = cb;
-    frag.append(tr);
+
+    const tr = el('input', 'wcard-tr');
+    tr.value = w.translation || '';
+    tr.placeholder = 'Translation';
+    tr.setAttribute('aria-label', 'Spanish translation');
+    tr.oninput = () => { w.translation = tr.value; build(); };
+
+    card.append(top, src, tr);
+    if (w.note) card.append(el('p', 'rounded-lg bg-butter px-2 py-1 text-xs font-medium text-on-accent', w.note));
+    if (w.example) card.append(el('p', 'text-[13px] leading-snug text-muted', w.example));
+    w.el = card; w.cb = cb;
+    setKeep(w, w.keep);
+    frag.append(card);
   });
   $('rows').replaceChildren(frag);
   applyFilter();
@@ -478,7 +496,7 @@ function applyFilter() {
 $('search').oninput = applyFilter;
 
 function setAll(v) {
-  state.words.forEach(w => { if (!w.el.hidden) { w.keep = v; w.cb.checked = v; w.el.classList.toggle('opacity-50', !v); } });
+  state.words.forEach(w => { if (!w.el.hidden) setKeep(w, v); });
   build();
 }
 $('selAll').onclick = () => setAll(true);
@@ -486,8 +504,9 @@ $('selNone').onclick = () => setAll(false);
 
 function build() {
   const kept = state.words.filter(w => w.keep);
-  $('count').textContent = `${kept.length} / ${state.words.length} selected`;
-  if (!state.generated) return;
+  $('count').textContent = kept.length;
+  $('countOf').textContent = `of ${plural(state.words.length, 'card')}`;
+  for (const id of ['copy', 'dl', 'known']) $(id).disabled = !kept.length;
   const ex = $('example').checked;
   $('out').value = kept.map(w => {
     let s = `${w.word} :: ${w.translation || ''}`;
@@ -496,13 +515,6 @@ function build() {
   }).join('\n');
 }
 $('example').onchange = build;
-
-$('generate').onclick = () => {
-  state.generated = true;
-  $('outCard').hidden = false;
-  build();
-  $('outCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
-};
 
 $('copy').onclick = async () => {
   await navigator.clipboard.writeText($('out').value);
@@ -526,8 +538,8 @@ $('dl').onclick = () => download('basque-words.md', $('out').value, 'text/markdo
 // ---------- settings: OpenRouter key & data ----------
 function refreshSettings() {
   const key = getKey();
-  $('keyDot').className = 'h-2 w-2 rounded-full ' + (key ? 'bg-emerald-500' : 'bg-amber-500');
-  $('openSettings').title = key ? 'Connected to OpenRouter' : 'Not connected to OpenRouter';
+  $('keyDot').className = 'absolute -top-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-ink ' + (key ? 'bg-mint' : 'bg-tomato');
+  $('openSettings').title = key ? 'Settings · connected to OpenRouter' : 'Settings · not connected to OpenRouter';
   $('connectBanner').hidden = Boolean(key);
   $('keyStatus').textContent = key
     ? `Connected. Key ${key.slice(0, 8)}…${key.slice(-4)} is saved in this browser.`
