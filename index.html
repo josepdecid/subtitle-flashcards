@@ -43,24 +43,33 @@
 
     <div class="card divide-y-2 divide-dashed divide-line">
       <div class="space-y-4 p-5 sm:p-6">
-        <div class="grid gap-4 sm:grid-cols-2">
-          <label class="block"><span class="lbl">Saved shows</span>
-            <select id="showPick" class="field py-3 text-base"><option value="">+ New show or film</option></select></label>
-          <div>
-            <label for="showName" class="lbl">Show or film name <span class="normal-case tracking-normal">(optional)</span></label>
-            <div class="flex gap-2">
-              <input id="showName" type="text" maxlength="120" autocomplete="off" placeholder="e.g. Hondar Ahoak, season 2" class="field py-3 text-base">
-              <button type="button" id="deleteShow" class="btn-ghost shrink-0" title="Delete this saved show" hidden>Delete</button>
+        <fieldset class="text-lg leading-[2.2] font-bold tracking-tight sm:text-xl">
+          <legend class="sr-only">Show and languages</legend>
+          <div id="showRow" class="relative">
+            I'm watching
+            <button type="button" id="showSlot" class="slot inline-flex max-w-full items-center gap-1.5 bg-peach text-left"
+              aria-haspopup="dialog" aria-expanded="false" aria-controls="showMenu">
+              <span id="showSlotText"></span>
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <div id="showMenu" role="dialog" aria-label="Show or film" class="menu" hidden>
+              <div class="px-2.5 pt-2 pb-1">
+                <label for="showName" class="lbl">Name</label>
+                <input id="showName" type="text" maxlength="120" autocomplete="off" placeholder="Aquí no hay quien viva" class="field py-2.5 text-base font-bold">
+              </div>
+              <div id="showListLabel" class="lbl px-2.5 pt-2">Or pick a saved show</div>
+              <ul id="showList" class="max-h-66 overflow-auto"></ul>
+              <button type="button" id="newShow" class="menu-act">
+                <span aria-hidden="true" class="grid h-5.5 w-5.5 place-content-center rounded-md border-2 border-current text-sm leading-none">+</span>
+                Start a new show
+              </button>
             </div>
           </div>
-        </div>
-        <fieldset>
-          <legend class="sr-only">Languages</legend>
-          <p class="text-lg leading-[2.2] font-bold tracking-tight sm:text-xl">
+          <p>
             The subtitles are in
             <select id="sourceLang" aria-label="Subtitle language" class="slot"></select>
             and I want my cards translated into
-            <select id="targetLang" aria-label="Flashcard language" class="slot rotate-1 bg-mint"></select>.
+            <select id="targetLang" aria-label="Flashcard language" class="slot rotate-1 bg-mint"></select>
           </p>
           <p id="langError" class="text-sm font-bold text-tomato empty:hidden"></p>
         </fieldset>

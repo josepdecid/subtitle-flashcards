@@ -137,13 +137,85 @@ $('sourceLang').onchange = $('targetLang').onchange = () => {
 };
 
 // Saved shows: picking one fills in its name, notes and languages; editing them saves it back.
+// The "I'm watching [show]" slot opens a popover with the name field and the saved shows.
+let currentShow = '';
+const EMPTY_SLOT = ['border-dashed', 'bg-transparent', 'text-muted', 'shadow-none'];
+const TRASH = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>';
+
 function renderShows(selected) {
-  const list = [...shows.values()].sort((a, b) => b.updatedAt - a.updatedAt);
-  $('showPick').replaceChildren(new Option('+ New show or film', ''), ...list.map(sh => new Option(sh.name, sh.name)));
-  $('showPick').value = shows.has(selected) ? selected : '';
-  $('deleteShow').hidden = !$('showPick').value;
-  settings.set('show', $('showPick').value);
+  currentShow = shows.has(selected) ? selected : '';
+  settings.set('show', currentShow);
+  $('showSlotText').textContent = currentShow || 'something new';
+  EMPTY_SLOT.forEach(c => $('showSlot').classList.toggle(c, !currentShow));
+  renderShowList();
 }
+
+/** The saved shows in the popover, newest first. `confirming` swaps that row for a delete confirmation. */
+function renderShowList(confirming = null) {
+  const list = [...shows.values()].sort((a, b) => b.updatedAt - a.updatedAt);
+  $('showListLabel').hidden = !list.length;
+  $('showList').replaceChildren(...list.map(sh => {
+    const li = el('li', 'menu-row' + (sh.name === confirming ? ' confirm' : sh.name === currentShow ? ' on' : ''));
+    if (sh.name === confirming) {
+      const yes = el('button', 'menu-mini bg-tomato', 'Delete'), no = el('button', 'menu-mini', 'Keep');
+      yes.type = no.type = 'button';
+      yes.onclick = () => {
+        deleteShow(sh.name);
+        if (sh.name === currentShow) pickShow(''); else renderShowList();
+        $('showName').focus();
+        toast(`Deleted “${sh.name}”`);
+      };
+      no.onclick = () => { renderShowList(); $('showName').focus(); };
+      li.append(el('span', 'min-w-0 flex-1 text-sm font-bold', `Delete “${sh.name}”?`), yes, no);
+      requestAnimationFrame(() => no.focus());
+      return li;
+    }
+    const pick = el('button', 'menu-pick');
+    pick.type = 'button';
+    pick.append(el('span', 'min-w-0 flex-1 truncate font-bold', sh.name), el('span', 'pill', `${sh.source} → ${sh.target}`.toUpperCase()));
+    pick.onclick = () => { pickShow(sh.name); closeShowMenu(true); };
+    const del = el('button', 'menu-del');
+    del.type = 'button';
+    del.innerHTML = TRASH;
+    del.setAttribute('aria-label', `Delete ${sh.name}`);
+    del.onclick = () => renderShowList(sh.name);
+    li.append(pick, del);
+    return li;
+  }));
+}
+
+/** Place the popover under the slot, kept inside the row so it never runs off a narrow screen. */
+function placeShowMenu() {
+  const menu = $('showMenu'), slot = $('showSlot'), row = $('showRow');
+  menu.style.top = slot.offsetTop + slot.offsetHeight + 8 + 'px';
+  menu.style.left = Math.max(0, Math.min(slot.offsetLeft, row.clientWidth - menu.offsetWidth)) + 'px';
+}
+function openShowMenu() {
+  $('showMenu').hidden = false;
+  $('showSlot').setAttribute('aria-expanded', 'true');
+  renderShowList();
+  placeShowMenu();
+  if (matchMedia('(pointer: fine)').matches) $('showName').select(); // skip the on-screen keyboard on touch
+}
+function closeShowMenu(refocus = false) {
+  if ($('showMenu').hidden) return;
+  $('showMenu').hidden = true;
+  $('showSlot').setAttribute('aria-expanded', 'false');
+  if (refocus) $('showSlot').focus();
+}
+$('showSlot').onclick = () => $('showMenu').hidden ? openShowMenu() : closeShowMenu();
+document.addEventListener('pointerdown', e => {
+  if (!$('showMenu').hidden && !$('showMenu').contains(e.target) && !$('showSlot').contains(e.target)) closeShowMenu();
+});
+$('showMenu').addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); closeShowMenu(true); } });
+$('showName').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  $('showName').blur(); // fires change, which saves the name
+  closeShowMenu(true);
+});
+$('newShow').onclick = () => { pickShow(''); $('showName').focus(); };
+window.addEventListener('resize', () => { if (!$('showMenu').hidden) placeShowMenu(); });
 
 function pickShow(name) {
   const show = shows.get(name);
@@ -159,11 +231,10 @@ function pickShow(name) {
   renderShows(name);
   lessonChanged();
 }
-$('showPick').onchange = () => pickShow($('showPick').value);
 
 /** Save the name, notes and languages as a show. Editing the name of the selected show renames it. */
 function rememberShow() {
-  const name = $('showName').value.trim(), current = $('showPick').value;
+  const name = $('showName').value.trim(), current = currentShow;
   if (!name) { if (current) renderShows(''); return; }
   if (current && current !== name && !shows.has(name)) deleteShow(current);
   const { source, target } = lesson();
@@ -171,14 +242,6 @@ function rememberShow() {
   renderShows(name);
 }
 $('showName').onchange = $('context').onchange = () => { rememberShow(); lessonChanged(); };
-
-$('deleteShow').onclick = () => {
-  const name = $('showPick').value;
-  if (!name || !confirm(`Delete the saved notes for “${name}”?`)) return;
-  deleteShow(name);
-  pickShow('');
-  toast(`Deleted “${name}”`);
-};
 
 /** Grow the notes box with its text; rows="3" keeps it at least three lines tall. */
 function fitContext() {
@@ -688,7 +751,7 @@ $('importFile').onchange = async () => {
   try {
     const n = importData(await file.text());
     refreshSettings();
-    renderShows($('showPick').value);
+    renderShows(currentShow);
     toast(`Imported ${plural(n.known, 'known word')}, ${plural(n.shows, 'show')} and ${plural(n.cache, 'cached result')}`);
   } catch (e) { toast('Import failed: ' + e.message); }
 };

@@ -69,6 +69,15 @@
   /* Fill-in-the-blank select inside a sentence. */
   .slot { @apply mx-0.5 inline-block -rotate-1 appearance-none rounded-xl border-2 border-ink bg-butter px-2.5 py-0.5 align-baseline leading-tight font-extrabold text-on-accent shadow-hard-sm transition hover:-translate-y-px hover:shadow-hard focus:ring-4 focus:ring-tomato/40 focus:outline-none; }
   .slot option { @apply bg-surface font-medium text-ink; }
+  /* Popover anchored under a slot (the show picker). JS sets its left/top. */
+  .menu { @apply absolute z-30 w-[min(380px,100%)] rounded-2xl border-2 border-ink bg-surface p-1.5 text-base leading-normal font-medium tracking-normal shadow-hard; }
+  .menu-row { @apply flex min-h-11 items-center gap-2 rounded-[10px] py-1 pr-1 pl-2.5 hover:bg-sunken; }
+  .menu-row.on { @apply bg-butter text-on-accent; }
+  .menu-row.confirm { @apply bg-peach text-on-accent hover:bg-peach; }
+  .menu-pick { @apply flex min-w-0 flex-1 items-center gap-2.5 self-stretch rounded-md text-left focus-visible:ring-4 focus-visible:ring-tomato/40 focus-visible:outline-none; }
+  .menu-del { @apply grid h-8 w-8 shrink-0 place-content-center rounded-lg opacity-60 hover:bg-tomato hover:text-on-accent hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-4 focus-visible:ring-tomato/40 focus-visible:outline-none; }
+  .menu-mini { @apply shrink-0 rounded-lg border-2 border-on-accent bg-white px-2.5 py-0.5 text-sm font-bold text-on-accent; }
+  .menu-act { @apply mt-1 flex w-full items-center gap-2 rounded-b-[10px] border-t-2 border-dashed border-line p-2.5 text-left font-bold hover:bg-sunken focus-visible:ring-4 focus-visible:ring-tomato/40 focus-visible:outline-none; }
   .lbl { @apply mb-1 block font-mono text-[11px] font-medium tracking-wider text-muted uppercase; }
   .pill { @apply inline-flex items-center rounded-full border-2 border-ink px-2.5 py-0.5 font-mono text-xs font-medium; }
   .toggle { @apply flex cursor-pointer items-center gap-2 font-medium; }
@@ -115,6 +124,11 @@
 .chk-inv:checked { background: var(--paper); }
 .chk-inv:checked::after { border-color: var(--ink); }
 .chk:focus-visible, .toggle input[type="checkbox"]:focus-visible { outline: 3px solid var(--color-tomato); outline-offset: 2px; }
+
+/* Saved-show delete buttons appear on hover where there is hover; touch screens always show them. */
+@media (hover: hover) {
+  .menu-row:not(:hover) .menu-del:not(:focus-visible) { opacity: 0; }
+}
 
 .hatch {
   background-image: repeating-linear-gradient(45deg, color-mix(in srgb, var(--ink) 9%, transparent) 0 6px, transparent 6px 12px);
