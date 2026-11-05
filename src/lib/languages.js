@@ -13,8 +13,8 @@ const names = new Intl.DisplayNames(['en'], { type: 'language' });
 /** English name of a language code, e.g. "eu" -> "Basque". */
 export const langName = code => names.of(code) || code;
 
-export const DEFAULT_SOURCE = 'eu';
-export const DEFAULT_TARGET = 'es';
+export const DEFAULT_SOURCE = 'es';
+export const DEFAULT_TARGET = 'en';
 
 export function getLangs() {
   const source = settings.get('source-lang', DEFAULT_SOURCE);
