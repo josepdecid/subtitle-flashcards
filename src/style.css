@@ -66,6 +66,9 @@
   .btn-lg { @apply px-5 py-3 text-base; }
 
   .field { @apply w-full rounded-xl border-2 border-ink bg-surface px-3 py-2 text-sm placeholder:text-muted focus:ring-4 focus:ring-tomato/40 focus:outline-none; }
+  /* Fill-in-the-blank select inside a sentence. */
+  .slot { @apply mx-0.5 inline-block -rotate-1 appearance-none rounded-xl border-2 border-ink bg-butter px-2.5 py-0.5 align-baseline leading-tight font-extrabold text-on-accent shadow-hard-sm transition hover:-translate-y-px hover:shadow-hard focus:ring-4 focus:ring-tomato/40 focus:outline-none; }
+  .slot option { @apply bg-surface font-medium text-ink; }
   .lbl { @apply mb-1 block font-mono text-[11px] font-medium tracking-wider text-muted uppercase; }
   .pill { @apply inline-flex items-center rounded-full border-2 border-ink px-2.5 py-0.5 font-mono text-xs font-medium; }
   .toggle { @apply flex cursor-pointer items-center gap-2 font-medium; }

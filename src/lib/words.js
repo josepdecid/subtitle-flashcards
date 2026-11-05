@@ -1,7 +1,7 @@
 // Tokenize subtitle lines, count words and decide which ones are worth studying.
 
 // Basque function words (and common inflected forms) that aren't worth studying.
-export const STOPWORDS = new Set(`
+export const BASQUE_STOPWORDS = new Set(`
   eta edo ez bai ba bada baita ezta baina ere ordea aldiz berriz ala al ote omen bait zeren ezen baldin nahiz
   oso hain asko gutxi gehiago gehien guztiz bakarrik jada dagoeneko noski agian hala horrela honela orduan
   hemen han hor hona hara horra hemendik handik hortik orain gero beti inoiz nehoiz behin oraindik
@@ -19,6 +19,9 @@ export const STOPWORDS = new Set(`
   dago daude zegoen zeuden dagoen daudenak dauka daukat daukazu daukagu dauzka dauzkat
   izango izateko izatea izaten izanda izanik egongo
 `.split(/\s+/).filter(Boolean));
+
+// Stopword lists by subtitle language. Other languages rely on min length and the Jev/LLM filters.
+export const STOPWORDS = { eu: BASQUE_STOPWORDS };
 
 // Letters only, so apostrophes and hyphens split tokens (Basque compounds like "ikus-entzunezko").
 const TOKEN_RE = /\p{L}+/gu;
@@ -46,8 +49,11 @@ export function examplePenalty(line) {
   return Math.max(EXAMPLE_MIN - n, n - EXAMPLE_MAX, 0);
 }
 
-/** Count every word and say why it is discarded: {word, count, example, reason} with reason null (kept) or a code. */
-export function analyzeWords(lines, { minLen = 4, minFreq = 1, limit = 150, known = new Set() } = {}) {
+/**
+ * Count every word and say why it is discarded: {word, count, example, reason} with reason null (kept) or a code.
+ * `nameHeuristic` treats words only ever capitalized mid-sentence as names; turn it off for languages like German.
+ */
+export function analyzeWords(lines, { minLen = 4, minFreq = 1, limit = 150, known = new Set(), stopwords = BASQUE_STOPWORDS, nameHeuristic = true } = {}) {
   const counts = new Map();
   const examples = new Map(); // word -> [penalty, line]
   const nameLike = new Map(); // only ever seen capitalized mid-sentence => probably a name
@@ -67,10 +73,10 @@ export function analyzeWords(lines, { minLen = 4, minFreq = 1, limit = 150, know
   let kept = 0;
   for (const [w, c] of sorted) {
     let reason = null;
-    if (STOPWORDS.has(w)) reason = 'stopword';
+    if (stopwords.has(w)) reason = 'stopword';
     else if ([...w].length < minLen) reason = 'short';
     else if (known.has(w)) reason = 'known';
-    else if (nameLike.get(w)) reason = 'name';
+    else if (nameHeuristic && nameLike.get(w)) reason = 'name';
     else if (c < minFreq) reason = 'freq';
     else if (kept >= limit) reason = 'limit';
     else kept++;

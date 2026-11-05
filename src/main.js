@@ -1,8 +1,9 @@
 import './style.css';
+import { getLangs, langName, SOURCE_LANGS, setLangs, TARGET_LANGS } from './lib/languages.js';
 import { DEFAULT_MODEL, finishOAuth, getKey, getModel, setKey, setModel, startOAuth } from './lib/openrouter.js';
 import { decodeText, parseCues } from './lib/parse.js';
 import { fetchSubtitles, findCandidates, translateWords } from './lib/pipeline.js';
-import { addKnown, cache, exportData, importData, known, loadData } from './lib/storage.js';
+import { addKnown, cache, deleteShow, exportData, importData, known, loadData, saveShow, settings, shows } from './lib/storage.js';
 
 const $ = id => document.getElementById(id);
 const el = (tag, cls = '', text = '') => {
@@ -74,7 +75,7 @@ const plural = (n, word, many = word + 's') => `${n} ${n === 1 ? word : many}`;
 const countWords = s => (s.match(/\p{L}+/gu) || []).length;
 
 // ---------- stepper ----------
-const STEPS = ['Source', 'Preview', 'Words', 'Flashcards'];
+const STEPS = ['Source & Context', 'Preview', 'Words', 'Flashcards'];
 function renderStepper() {
   const ol = $('stepper');
   ol.innerHTML = '';
@@ -102,7 +103,106 @@ function go(n) {
 }
 document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => go(+b.dataset.go));
 
-// ---------- step 1: source ----------
+// ---------- step 1: source & context ----------
+/** The language pair and show title + notes that steps 3 and 4 work with. */
+function lesson() {
+  const name = $('showName').value.trim(), notes = $('context').value.trim();
+  const context = [name && `Title: ${name}`, notes].filter(Boolean).join('\n');
+  return { source: $('sourceLang').value, target: $('targetLang').value, context };
+}
+const lessonSig = () => JSON.stringify(lesson());
+
+function fillLangs() {
+  const opts = codes => codes.map(c => [c, langName(c)]).sort((a, b) => a[1].localeCompare(b[1])).map(([c, n]) => new Option(n, c));
+  const { source, target } = getLangs();
+  $('sourceLang').replaceChildren(...opts(SOURCE_LANGS));
+  $('targetLang').replaceChildren(...opts(TARGET_LANGS));
+  $('sourceLang').value = source;
+  $('targetLang').value = target;
+  fitSlots();
+}
+
+/** Words and cards depend on the lesson, so editing it sends the learner back through "Find words". */
+function lessonChanged() {
+  state.candKey = state.wordKey = '';
+  if (state.lines.length) state.maxStep = Math.min(state.maxStep, 2);
+  renderStepper();
+}
+$('sourceLang').onchange = $('targetLang').onchange = () => {
+  setLangs(lesson());
+  fitSlots();
+  $('langError').textContent = '';
+  rememberShow();
+  lessonChanged();
+};
+
+// Saved shows: picking one fills in its name, notes and languages; editing them saves it back.
+function renderShows(selected) {
+  const list = [...shows.values()].sort((a, b) => b.updatedAt - a.updatedAt);
+  $('showPick').replaceChildren(new Option('+ New show or film', ''), ...list.map(sh => new Option(sh.name, sh.name)));
+  $('showPick').value = shows.has(selected) ? selected : '';
+  $('deleteShow').hidden = !$('showPick').value;
+  settings.set('show', $('showPick').value);
+}
+
+function pickShow(name) {
+  const show = shows.get(name);
+  $('showName').value = show?.name || '';
+  $('context').value = show?.context || '';
+  if (show) {
+    if (SOURCE_LANGS.includes(show.source)) $('sourceLang').value = show.source;
+    if (TARGET_LANGS.includes(show.target)) $('targetLang').value = show.target;
+    setLangs(lesson());
+    fitSlots();
+  }
+  fitContext();
+  renderShows(name);
+  lessonChanged();
+}
+$('showPick').onchange = () => pickShow($('showPick').value);
+
+/** Save the name, notes and languages as a show. Editing the name of the selected show renames it. */
+function rememberShow() {
+  const name = $('showName').value.trim(), current = $('showPick').value;
+  if (!name) { if (current) renderShows(''); return; }
+  if (current && current !== name && !shows.has(name)) deleteShow(current);
+  const { source, target } = lesson();
+  saveShow({ name, context: $('context').value.trim(), source, target });
+  renderShows(name);
+}
+$('showName').onchange = $('context').onchange = () => { rememberShow(); lessonChanged(); };
+
+$('deleteShow').onclick = () => {
+  const name = $('showPick').value;
+  if (!name || !confirm(`Delete the saved notes for “${name}”?`)) return;
+  deleteShow(name);
+  pickShow('');
+  toast(`Deleted “${name}”`);
+};
+
+/** Grow the notes box with its text; rows="3" keeps it at least three lines tall. */
+function fitContext() {
+  const ta = $('context');
+  ta.style.height = 'auto';
+  ta.style.height = ta.scrollHeight + ta.offsetHeight - ta.clientHeight + 'px';
+}
+$('context').oninput = fitContext;
+
+/** Size each language select to its chosen name (selects otherwise take the width of their longest option). */
+const measure = document.createElement('canvas').getContext('2d');
+function fitSlots() {
+  for (const sel of [$('sourceLang'), $('targetLang')]) {
+    const cs = getComputedStyle(sel);
+    measure.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    measure.letterSpacing = cs.letterSpacing === 'normal' ? '0px' : cs.letterSpacing;
+    const text = measure.measureText(sel.selectedOptions[0]?.text || '').width;
+    const box = ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth'].reduce((sum, p) => sum + parseFloat(cs[p]), 0);
+    sel.style.width = Math.ceil(text + box + 1) + 'px';
+  }
+}
+window.addEventListener('resize', () => { fitContext(); fitSlots(); }); // font size changes at the sm breakpoint
+document.fonts.ready.then(fitSlots); // re-measure once the web font replaces the fallback
+
 let mode = 'url';
 const ACTIVE = ['bg-ink', 'text-paper'];
 function setMode(m) {
@@ -131,7 +231,10 @@ $('drop').ondrop = e => {
 $('load').onclick = () => busy($('load'), 'Loading…', async () => {
   const file = mode === 'file' ? $('file').files[0] : null;
   const url = mode === 'url' ? $('url').value.trim() : '';
+  const { source, target } = lesson();
+  if (source === target) { $('langError').textContent = 'Pick a different language for your cards than the subtitles.'; return; }
   if (!file && !url) { setStatus(1, mode === 'file' ? 'Choose a subtitle file first.' : 'Enter a subtitle URL first.', 'error'); return; }
+  rememberShow();
   setStatus(1, 'Loading subtitles…');
   try {
     const cues = parseCues(file ? decodeText(await file.arrayBuffer()) : await fetchSubtitles(url));
@@ -391,7 +494,7 @@ $('reasonFilter').onchange = $('skipSearch').oninput = renderCands;
 async function loadCandidates() {
   const keptLines = state.lines.filter((_, i) => !skipMask()[i]).map(l => l.s);
   setStatus(3, 'Analysing words — this can take a moment…');
-  const data = await findCandidates(keptLines, {
+  const data = await findCandidates(keptLines, lesson(), {
     limit: num('limit', 150), minLen: num('minLen', 4), minFreq: num('minFreq', 1),
     minUseful: num('minUseful', 0.5), engine: $('engine').value,
     jev: $('jev').checked, useKnown: $('useKnown').checked,
@@ -407,7 +510,7 @@ async function loadCandidates() {
 }
 
 $('toWords').onclick = () => busy($('toWords'), 'Working…', async () => {
-  const key = JSON.stringify(state.sections.map(s => [s.a, s.b]));
+  const key = lessonSig() + JSON.stringify(state.sections.map(s => [s.a, s.b]));
   if (key !== state.candKey || !state.cands.length) {
     go(3);
     try { await loadCandidates(); state.candKey = key; state.wordKey = ''; }
@@ -423,12 +526,12 @@ $('rerun').onclick = () => busy($('rerun'), 'Working…', async () => {
 // ---------- step 4: translations ----------
 $('toTranslate').onclick = () => busy($('toTranslate'), 'Translating…', async () => {
   const chosen = state.cands.filter(included);
-  const key = state.engine + '|' + chosen.map(c => c.word).join(',');
+  const key = lessonSig() + state.engine + '|' + chosen.map(c => c.word).join(',');
   if (key === state.wordKey && state.words.length) { go(4); return; }
   go(4);
   setStatus(4, 'Translating — this can take a moment…');
   try {
-    const data = await translateWords(chosen, state.engine, $('useKnown').checked);
+    const data = await translateWords(chosen, lesson(), state.engine, $('useKnown').checked);
     state.words = data.words.map(w => ({ ...w, keep: !w.note }));
     state.wordKey = key;
     $('search').value = '';
@@ -453,6 +556,7 @@ function setKeep(w, v) {
 
 function renderWords() {
   const frag = document.createDocumentFragment();
+  const { source, target } = lesson();
   state.words.forEach((w, i) => {
     const card = el('div', 'wcard');
     const cb = el('input', 'chk');
@@ -467,14 +571,14 @@ function renderWords() {
 
     const src = el('input', 'wcard-word');
     src.value = w.word;
-    src.setAttribute('aria-label', 'Basque word');
+    src.setAttribute('aria-label', `${langName(source)} word`);
     src.oninput = () => { w.word = src.value; build(); };
     if (w.forms) src.title = w.forms.join(', ');
 
     const tr = el('input', 'wcard-tr');
     tr.value = w.translation || '';
     tr.placeholder = 'Translation';
-    tr.setAttribute('aria-label', 'Spanish translation');
+    tr.setAttribute('aria-label', `${langName(target)} translation`);
     tr.oninput = () => { w.translation = tr.value; build(); };
 
     card.append(top, src, tr);
@@ -533,7 +637,10 @@ function download(name, text, type) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
-$('dl').onclick = () => download('basque-words.md', $('out').value, 'text/markdown');
+$('dl').onclick = () => {
+  const { source, target } = lesson();
+  download(`flashcards-${source}-${target}.md`, $('out').value, 'text/markdown');
+};
 
 // ---------- settings: OpenRouter key & data ----------
 function refreshSettings() {
@@ -541,6 +648,8 @@ function refreshSettings() {
   $('keyDot').className = 'absolute -top-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-ink ' + (key ? 'bg-mint' : 'bg-tomato');
   $('openSettings').title = key ? 'Settings · connected to OpenRouter' : 'Settings · not connected to OpenRouter';
   $('connectBanner').hidden = Boolean(key);
+  $('contextBox').hidden = !key;
+  if (key) fitContext(); // the box can't measure its text while hidden
   $('keyStatus').textContent = key
     ? `Connected. Key ${key.slice(0, 8)}…${key.slice(-4)} is saved in this browser.`
     : 'Not connected. Without a key, the app uses plain word forms and MyMemory translations.';
@@ -548,7 +657,7 @@ function refreshSettings() {
   $('connect').textContent = key ? 'Reconnect with OpenRouter' : 'Connect with OpenRouter';
   $('model').placeholder = DEFAULT_MODEL;
   $('model').value = getModel() === DEFAULT_MODEL ? '' : getModel();
-  $('dataStatus').textContent = `${plural(known.size, 'known word')} · ${plural(cache.size, 'cached result')}`;
+  $('dataStatus').textContent = `${plural(known.size, 'known word')} · ${plural(shows.size, 'saved show')} · ${plural(cache.size, 'cached result')}`;
 }
 
 const connect = () => startOAuth().catch(e => toast('Error: ' + e.message));
@@ -579,15 +688,19 @@ $('importFile').onchange = async () => {
   try {
     const n = importData(await file.text());
     refreshSettings();
-    toast(`Imported ${plural(n.known, 'known word')} and ${plural(n.cache, 'cached result')}`);
+    renderShows($('showPick').value);
+    toast(`Imported ${plural(n.known, 'known word')}, ${plural(n.shows, 'show')} and ${plural(n.cache, 'cached result')}`);
   } catch (e) { toast('Import failed: ' + e.message); }
 };
 
 // ---------- start ----------
+fillLangs();
 go(1);
 refreshSettings();
 const persistent = await loadData();
-if (!persistent) setStatus(1, "This browser isn't saving data (private mode?). Known words and translations won't be kept.", 'info');
+if (!persistent) setStatus(1, "This browser isn't saving data (private mode?). Known words, shows and translations won't be kept.", 'info');
+if (shows.has(settings.get('show'))) pickShow(settings.get('show'));
+else renderShows('');
 refreshSettings();
 try {
   if (await finishOAuth()) { refreshSettings(); toast('Connected to OpenRouter'); }

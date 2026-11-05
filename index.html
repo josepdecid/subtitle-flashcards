@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Basque Subtitle Flashcards</title>
-<meta name="description" content="Turn Basque subtitles into RemNote flashcards, in your browser.">
+<title>Subtitle Flashcards</title>
+<meta name="description" content="Turn the subtitles of any show or film into RemNote flashcards, in your browser.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect x='9' y='9' width='28' height='28' rx='7' fill='%23ff6b4a' stroke='%23161616' stroke-width='3'/%3E%3Crect x='3' y='3' width='28' height='28' rx='7' fill='%23ffe58a' stroke='%23161616' stroke-width='3' transform='rotate(-8 17 17)'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -31,40 +31,74 @@
 
 <main class="mx-auto max-w-6xl px-4 pt-10 pb-16 sm:px-6">
 
-  <!-- Step 1: source -->
+  <!-- Step 1: source & context -->
   <section id="step1" class="space-y-6">
     <div>
-      <h2 class="title">Load your <span class="hl">subtitles</span></h2>
-      <p class="lead">Paste a link to a Basque subtitle file or upload one. You'll end up with flashcards ready to paste into RemNote.</p>
+      <h2 class="title">Set the <span class="hl">scene</span></h2>
+      <div class="lead max-w-none">
+        <p class="inline sm:block">Pick your languages, load a subtitle file and say a little about what you're watching.</p>
+        <p class="inline sm:block">You'll end up with flashcards ready to paste into RemNote.</p>
+      </div>
     </div>
 
-    <div id="connectBanner" class="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-2xl border-2 border-ink bg-lilac px-4 py-3 text-on-accent" hidden>
-      <span class="flex-1 basis-72 font-medium">Connect your OpenRouter account to get root words and accurate translations. Without it, the app uses plain word forms and MyMemory.</span>
-      <button type="button" id="bannerConnect" class="btn-ghost border-on-accent bg-white text-on-accent hover:bg-white/80">Connect OpenRouter</button>
-    </div>
-
-    <div class="card space-y-5 p-5 sm:p-6">
-      <div class="inline-flex rounded-full border-2 border-ink bg-surface p-1 text-sm" role="tablist">
-        <button type="button" id="tabUrl" role="tab" class="rounded-full px-4 py-1.5 font-bold transition">From URL</button>
-        <button type="button" id="tabFile" role="tab" class="rounded-full px-4 py-1.5 font-bold transition">Upload file</button>
+    <div class="card divide-y-2 divide-dashed divide-line">
+      <div class="space-y-4 p-5 sm:p-6">
+        <div class="grid gap-4 sm:grid-cols-2">
+          <label class="block"><span class="lbl">Saved shows</span>
+            <select id="showPick" class="field py-3 text-base"><option value="">+ New show or film</option></select></label>
+          <div>
+            <label for="showName" class="lbl">Show or film name <span class="normal-case tracking-normal">(optional)</span></label>
+            <div class="flex gap-2">
+              <input id="showName" type="text" maxlength="120" autocomplete="off" placeholder="e.g. Hondar Ahoak, season 2" class="field py-3 text-base">
+              <button type="button" id="deleteShow" class="btn-ghost shrink-0" title="Delete this saved show" hidden>Delete</button>
+            </div>
+          </div>
+        </div>
+        <fieldset>
+          <legend class="sr-only">Languages</legend>
+          <p class="text-lg leading-[2.2] font-bold tracking-tight sm:text-xl">
+            The subtitles are in
+            <select id="sourceLang" aria-label="Subtitle language" class="slot"></select>
+            and I want my cards translated into
+            <select id="targetLang" aria-label="Flashcard language" class="slot rotate-1 bg-mint"></select>.
+          </p>
+          <p id="langError" class="text-sm font-bold text-tomato empty:hidden"></p>
+        </fieldset>
+        <div id="connectBanner" class="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-2xl border-2 border-ink bg-lilac px-4 py-3 text-on-accent" hidden>
+          <span class="flex-1 basis-72 font-medium">Connect your OpenRouter account to get root words, accurate translations and use your show notes. Without it, the app uses plain word forms and MyMemory.</span>
+          <button type="button" id="bannerConnect" class="btn-ghost border-on-accent bg-white text-on-accent hover:bg-white/80">Connect OpenRouter</button>
+        </div>
+        <div id="contextBox" hidden>
+          <label for="context" class="lbl">About the show or film <span class="normal-case tracking-normal">(optional)</span></label>
+          <textarea id="context" rows="3" maxlength="1500" class="field resize-none overflow-hidden text-base leading-snug"
+            placeholder="e.g. Season 2 of a crime drama set in a fishing town. Main characters: Ane, Mikel and Txomin; they work at the Itsasoa bar. Lots of police and boat vocabulary."></textarea>
+          <p class="mt-2 text-xs text-muted">Character, place and brand names help skip proper nouns; the setting and theme help pick relevant words and the right sense of each.</p>
+        </div>
       </div>
 
-      <div id="paneUrl">
-        <label for="url" class="lbl">Subtitle URL</label>
-        <input type="text" id="url" placeholder="https://…/subtitles.srt" class="field py-3 text-base">
+      <div class="space-y-4 p-5 sm:p-6">
+        <div class="inline-flex rounded-full border-2 border-ink bg-surface p-1 text-sm" role="tablist">
+          <button type="button" id="tabUrl" role="tab" class="rounded-full px-4 py-1.5 font-bold transition">From URL</button>
+          <button type="button" id="tabFile" role="tab" class="rounded-full px-4 py-1.5 font-bold transition">Upload file</button>
+        </div>
+
+        <div id="paneUrl">
+          <label for="url" class="lbl">Subtitle URL</label>
+          <input type="text" id="url" placeholder="https://…/subtitles.srt" class="field py-3 text-base">
+        </div>
+
+        <div id="paneFile" hidden>
+          <label id="drop" for="file"
+            class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-ink bg-sunken px-4 py-12 text-center transition hover:bg-butter/40">
+            <svg aria-hidden="true" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>
+            <span id="fileName" class="text-lg font-bold">Drop a file or click to browse</span>
+            <span class="font-mono text-xs text-muted">.srt · .vtt · .ass · .ssa · .txt</span>
+          </label>
+          <input type="file" id="file" class="hidden" accept=".srt,.vtt,.ass,.ssa,.txt">
+        </div>
       </div>
 
-      <div id="paneFile" hidden>
-        <label id="drop" for="file"
-          class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-ink bg-sunken px-4 py-12 text-center transition hover:bg-butter/40">
-          <svg aria-hidden="true" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>
-          <span id="fileName" class="text-lg font-bold">Drop a file or click to browse</span>
-          <span class="font-mono text-xs text-muted">.srt · .vtt · .ass · .ssa · .txt</span>
-        </label>
-        <input type="file" id="file" class="hidden" accept=".srt,.vtt,.ass,.ssa,.txt">
-      </div>
-
-      <div class="flex flex-wrap items-center gap-3">
+      <div class="flex flex-wrap items-center gap-3 p-5 sm:p-6">
         <button id="load" class="btn-primary btn-lg">Load subtitles →</button>
         <div id="status1" role="status" class="text-sm"></div>
       </div>
@@ -262,7 +296,7 @@
         <button type="button" id="importData" class="btn-ghost">Import…</button>
         <input type="file" id="importFile" class="hidden" accept=".json,.txt,application/json,text/plain">
       </div>
-      <p class="text-xs text-muted">Known words and cached translations are stored in this browser. Import merges an export file, or a text file with one known word per line.</p>
+      <p class="text-xs text-muted">Known words, saved shows and cached translations are stored in this browser. Import merges an export file, or a text file with one known word per line.</p>
     </section>
   </div>
 </dialog>
