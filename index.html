@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Basque Subtitle Flashcards</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<script>tailwind.config = { darkMode: 'media' }</script>
+<meta name="description" content="Turn Basque subtitles into RemNote flashcards, in your browser.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%234f46e5'/%3E%3Ctext x='50' y='54' font-size='58' text-anchor='middle' dominant-baseline='middle'%3E%F0%9F%97%82%EF%B8%8F%3C/text%3E%3C/svg%3E">
 </head>
 <body class="min-h-screen bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-200">
 
@@ -19,15 +19,22 @@
       </div>
     </div>
     <ol id="stepper" class="ml-auto flex flex-wrap items-center gap-2 text-sm"></ol>
+    <button id="openSettings" type="button" class="btn-ghost flex items-center gap-2" title="OpenRouter key and saved data">
+      <span id="keyDot" class="h-2 w-2 rounded-full bg-slate-400"></span>Settings
+    </button>
   </div>
 </header>
 
-<main class="mx-auto max-w-5xl space-y-6 px-4 py-6">
+<main class="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6">
 
   <!-- Step 1: source -->
   <section id="step1" class="card">
     <div class="card-head"><h2 class="card-title">Load subtitles</h2></div>
     <div class="space-y-4 p-4">
+      <div id="connectBanner" class="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg bg-indigo-50 px-3 py-2 text-sm text-indigo-900 dark:bg-indigo-950 dark:text-indigo-200" hidden>
+        <span>Connect your OpenRouter account to get root words and accurate translations. Without it, the app uses plain word forms and MyMemory.</span>
+        <button type="button" id="bannerConnect" class="btn-primary ml-auto py-1.5!">Connect OpenRouter</button>
+      </div>
       <div class="grid max-w-sm grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1 text-sm dark:bg-slate-800" role="tablist">
         <button type="button" id="tabUrl" class="rounded-md px-3 py-1.5 font-medium transition">From URL</button>
         <button type="button" id="tabFile" class="rounded-md px-3 py-1.5 font-medium transition">Upload file</button>
@@ -65,13 +72,13 @@
         <div class="flex flex-wrap items-end gap-3 text-sm">
           <div class="flex items-end gap-1">
             <label class="block"><span class="lbl">From</span>
-              <select id="fromType" class="field !w-28"><option value="start">Start</option><option value="time">Time</option><option value="text">Sentence</option></select></label>
-            <input id="fromVal" class="field !w-44" hidden>
+              <select id="fromType" class="field w-28!"><option value="start">Start</option><option value="time">Time</option><option value="text">Sentence</option></select></label>
+            <input id="fromVal" class="field w-44!" hidden>
           </div>
           <div class="flex items-end gap-1">
             <label class="block"><span class="lbl">To</span>
-              <select id="toType" class="field !w-28"><option value="end">End</option><option value="time">Time</option><option value="text">Sentence</option></select></label>
-            <input id="toVal" class="field !w-44" hidden>
+              <select id="toType" class="field w-28!"><option value="end">End</option><option value="time">Time</option><option value="text">Sentence</option></select></label>
+            <input id="toVal" class="field w-44!" hidden>
           </div>
           <label class="toggle pb-2" title="Also skip the line that matches a sentence boundary"><input type="checkbox" id="incl" checked><span>Include boundary lines</span></label>
           <button id="addSkip" class="btn-ghost">Add skip</button>
@@ -95,7 +102,7 @@
     <div class="card-head"><h2 class="card-title">Filter words</h2></div>
     <div class="space-y-4 p-4">
       <details class="group rounded-lg border border-slate-200 dark:border-slate-800">
-        <summary class="flex cursor-pointer list-none items-center justify-between px-3 py-2 text-sm font-medium">
+        <summary class="flex cursor-pointer list-none [&::-webkit-details-marker]:hidden items-center justify-between px-3 py-2 text-sm font-medium">
           Filter options
           <span class="text-slate-400 transition group-open:rotate-180">▾</span>
         </summary>
@@ -106,9 +113,8 @@
           <label class="block"><span class="lbl">Min usefulness (0–1)</span><input type="number" id="minUseful" value="0.5" min="0" max="1" step="0.05" class="field"></label>
           <label class="block sm:col-span-2"><span class="lbl">Headword engine</span>
             <select id="engine" class="field">
-              <option value="auto">Auto (LLM if API key, else Stanza)</option>
+              <option value="auto">Auto (LLM if connected, else plain word forms)</option>
               <option value="llm">LLM (root words)</option>
-              <option value="stanza">Stanza</option>
               <option value="regex">Plain word forms</option>
             </select></label>
           <div class="space-y-2 self-end pb-1">
@@ -141,8 +147,8 @@
           <span id="skipCount" class="pill"></span>
           <p class="text-xs text-slate-500">Tick a word to include it anyway.</p>
           <div class="ml-auto flex gap-2">
-            <select id="reasonFilter" class="field !w-52"></select>
-            <input id="skipSearch" type="search" placeholder="Filter…" class="field !w-36">
+            <select id="reasonFilter" class="field w-52!"></select>
+            <input id="skipSearch" type="search" placeholder="Filter…" class="field w-36!">
           </div>
         </div>
         <div class="max-h-[360px] overflow-auto rounded-xl border border-slate-200 dark:border-slate-800">
@@ -160,13 +166,13 @@
   </section>
 
   <!-- Step 4: translations & output -->
-  <section id="step4" class="space-y-6" hidden>
+  <section id="step4" class="flex flex-col gap-6" hidden>
     <div class="card">
       <div class="card-head flex flex-wrap items-center gap-3">
         <h2 class="card-title">Review translations</h2>
         <span id="count" class="pill"></span>
         <div class="ml-auto flex items-center gap-2">
-          <input id="search" type="search" placeholder="Filter…" class="field !w-40">
+          <input id="search" type="search" placeholder="Filter…" class="field w-40!">
           <button id="selAll" type="button" class="btn-ghost">Select all</button>
           <button id="selNone" type="button" class="btn-ghost">None</button>
         </div>
@@ -176,7 +182,7 @@
         <p class="text-sm text-slate-500 dark:text-slate-400">Untick words to leave them out; edit the word or the translation if needed.</p>
         <div class="max-h-[560px] overflow-auto rounded-xl border border-slate-200 dark:border-slate-800">
           <table class="w-full text-sm">
-            <thead class="thead"><tr><th class="w-10 px-2 py-2"></th><th class="px-2 py-2">Word</th><th class="px-2 py-2">Translation</th><th class="px-2 py-2 text-right">#</th><th class="hidden px-2 py-2 md:table-cell">Example</th></tr></thead>
+            <thead class="thead"><tr><th class="w-10 px-2 py-2"></th><th class="px-2 py-2">Word</th><th class="px-2 py-2">Translation</th><th class="py-2 pr-4 pl-2 text-right md:pr-2">#</th><th class="hidden px-2 py-2 md:table-cell">Example</th></tr></thead>
             <tbody id="rows" class="divide-y divide-slate-100 dark:divide-slate-800"></tbody>
           </table>
         </div>
@@ -192,570 +198,57 @@
         <h2 class="card-title">RemNote text</h2>
         <label class="toggle ml-3 text-sm"><input type="checkbox" id="example" checked><span>Include example sentence</span></label>
         <div class="ml-auto flex flex-wrap gap-2">
-          <button id="copy" class="btn-primary !py-1.5">Copy</button>
+          <button id="copy" class="btn-primary py-1.5!">Copy</button>
           <button id="dl" class="btn-ghost">Download .md</button>
           <button id="known" class="btn-ghost" title="Hide the selected words in future extractions">Mark as known</button>
         </div>
       </div>
       <div class="p-4">
-        <textarea id="out" readonly rows="10" class="w-full rounded-lg border border-slate-300 bg-slate-50 p-3 font-mono text-xs focus:outline-none dark:border-slate-700 dark:bg-slate-950"></textarea>
+        <textarea id="out" readonly rows="10" class="w-full rounded-lg border border-slate-300 bg-slate-50 p-3 font-mono text-xs focus:outline-hidden dark:border-slate-700 dark:bg-slate-950"></textarea>
         <p class="mt-2 text-xs text-slate-500">Paste into a RemNote document. Cards use <code class="rounded bg-slate-100 px-1 dark:bg-slate-800">word :: translation</code>; the example is a child bullet.</p>
       </div>
     </div>
   </section>
 </main>
 
-<div id="toast" class="pointer-events-none fixed bottom-6 left-1/2 -translate-x-1/2 translate-y-4 rounded-lg bg-slate-900 px-4 py-2 text-sm text-white opacity-0 shadow-lg transition dark:bg-slate-100 dark:text-slate-900"></div>
+<dialog id="settings" class="m-auto w-[min(34rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white p-0 text-slate-800 shadow-xl backdrop:bg-slate-900/40 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
+  <form method="dialog" class="card-head flex items-center">
+    <h2 class="card-title">Settings</h2>
+    <button class="ml-auto rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Close">✕</button>
+  </form>
+  <div class="space-y-5 p-4 text-sm">
+    <section class="space-y-3">
+      <h3 class="font-semibold">OpenRouter</h3>
+      <p id="keyStatus"></p>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" id="connect" class="btn-primary">Connect with OpenRouter</button>
+        <button type="button" id="disconnect" class="btn-ghost">Disconnect</button>
+      </div>
+      <details>
+        <summary class="cursor-pointer text-xs text-slate-500">Or paste an API key</summary>
+        <div class="mt-2 flex gap-2">
+          <input id="keyInput" type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-v1-…" class="field">
+          <button type="button" id="saveKey" class="btn-ghost">Save</button>
+        </div>
+      </details>
+      <label class="block"><span class="lbl">Model</span><input id="model" class="field" spellcheck="false"></label>
+      <p class="text-xs text-slate-500">Your key is saved in this browser and only sent to openrouter.ai. Requests use your own OpenRouter credits. Disconnecting removes the key from this browser; to revoke it, go to <a class="underline" href="https://openrouter.ai/settings/keys" target="_blank" rel="noopener">openrouter.ai/settings/keys</a>.</p>
+    </section>
+    <section class="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-800">
+      <h3 class="font-semibold">Your data</h3>
+      <p id="dataStatus" class="text-slate-500"></p>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" id="exportData" class="btn-ghost">Export</button>
+        <button type="button" id="importData" class="btn-ghost">Import…</button>
+        <input type="file" id="importFile" class="hidden" accept=".json,.txt,application/json,text/plain">
+      </div>
+      <p class="text-xs text-slate-500">Known words and cached translations are stored in this browser. Import merges an export file, or a text file with one known word per line.</p>
+    </section>
+  </div>
+</dialog>
 
-<style>
-  .hatch {
-    background-image: repeating-linear-gradient(45deg, rgba(148,163,184,.28) 0 6px, transparent 6px 12px);
-  }
-</style>
-<style type="text/tailwindcss">
-  @layer components {
-    .card { @apply rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900; }
-    .card-head { @apply border-b border-slate-200 p-4 dark:border-slate-800; }
-    .card-foot { @apply flex items-center gap-3 border-t border-slate-200 p-4 dark:border-slate-800; }
-    .card-title { @apply font-semibold; }
-    .field { @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 dark:border-slate-700 dark:bg-slate-950; }
-    .lbl { @apply mb-1 block text-xs font-medium text-slate-500; }
-    .btn-ghost { @apply rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-800; }
-    .btn-primary { @apply rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:cursor-wait disabled:opacity-70; }
-    .pill { @apply rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium dark:bg-slate-800; }
-    .toggle { @apply flex cursor-pointer items-center gap-2; }
-    .toggle input { @apply h-4 w-4 rounded border-slate-300 accent-indigo-600; }
-    .thead { @apply sticky top-0 bg-white text-left text-xs uppercase tracking-wide text-slate-500 dark:bg-slate-900; }
-    .stat { @apply rounded-xl bg-slate-100 px-3 py-2 dark:bg-slate-800; }
-  }
-</style>
+<div id="toast"class="pointer-events-none fixed bottom-6 left-1/2 -translate-x-1/2 translate-y-4 rounded-lg bg-slate-900 px-4 py-2 text-sm text-white opacity-0 shadow-lg transition dark:bg-slate-100 dark:text-slate-900"></div>
 
-<script>
-const $ = id => document.getElementById(id);
-const el = (tag, cls = '', text = '') => {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text) e.textContent = text;
-  return e;
-};
-async function api(path, body) {
-  const r = await fetch(path, { method: 'POST', body: JSON.stringify(body) });
-  let data;
-  try { data = await r.json(); }
-  catch { throw new Error(`Server returned HTTP ${r.status} for ${path} (not JSON). Is the server up to date? Restart it.`); }
-  if (data.error) throw new Error(data.error);
-  return data;
-}
-
-const state = {
-  step: 1, maxStep: 1,
-  lines: [],          // {t, s, w}
-  sections: [],       // {a, b, label}
-  expanded: new Set(),// first line index of expanded skipped runs
-  cands: [],          // {word, count, example, reason, scores, override}
-  candKey: '', engine: 'auto',
-  words: [],          // {word, translation, count, example, keep, note}
-  wordKey: '',
-  generated: false,
-};
-
-// ---------- helpers ----------
-let toastTimer;
-function toast(msg) {
-  const t = $('toast');
-  t.textContent = msg;
-  t.classList.remove('opacity-0', 'translate-y-4');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.add('opacity-0', 'translate-y-4'), 2000);
-}
-
-function setStatus(n, msg, kind = 'info') {
-  const e = $('status' + n);
-  e.textContent = msg;
-  e.style.whiteSpace = 'pre-line';
-  e.className = 'text-sm ' + (msg ? 'rounded-lg px-3 py-2 ' + ({
-    info: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
-    error: 'bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300',
-    ok: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
-  })[kind] : '');
-}
-
-async function busy(btn, label, fn) {
-  const prev = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = label;
-  try { return await fn(); } finally { btn.disabled = false; btn.textContent = prev; }
-}
-
-const pad = n => String(n).padStart(2, '0');
-function fmtTime(s) {
-  if (s == null) return '';
-  s = Math.floor(s);
-  const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60);
-  return (h ? `${h}:${pad(m)}` : `${m}`) + ':' + pad(s % 60);
-}
-function parseTime(str) {
-  const parts = str.trim().split(':').map(Number);
-  if (!str.trim() || parts.length > 3 || parts.some(n => !Number.isFinite(n) || n < 0)) return null;
-  return parts.reduce((acc, n) => acc * 60 + n, 0);
-}
-const countWords = s => (s.match(/\p{L}+/gu) || []).length;
-
-// ---------- stepper ----------
-const STEPS = ['Source', 'Preview', 'Words', 'Flashcards'];
-function renderStepper() {
-  const ol = $('stepper');
-  ol.innerHTML = '';
-  STEPS.forEach((name, i) => {
-    const n = i + 1;
-    const reachable = n <= state.maxStep;
-    const b = el('button', 'flex items-center gap-2 rounded-full px-2 py-1 transition ' +
-      (n === state.step ? 'font-semibold' : reachable ? 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800' : 'cursor-default text-slate-400'));
-    b.disabled = !reachable;
-    const dot = el('span', 'flex h-6 w-6 items-center justify-center rounded-full text-xs ' +
-      (n === state.step ? 'bg-indigo-600 text-white' : n < state.step ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800'),
-      n < state.step ? '✓' : String(n));
-    b.append(dot, el('span', 'hidden sm:inline', name));
-    b.onclick = () => go(n);
-    const li = el('li');
-    li.append(b);
-    ol.append(li);
-  });
-}
-
-function go(n) {
-  state.step = n;
-  state.maxStep = Math.max(state.maxStep, n);
-  for (let i = 1; i <= 4; i++) $('step' + i).hidden = i !== n;
-  renderStepper();
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => go(+b.dataset.go));
-
-// ---------- step 1: source ----------
-let mode = 'url';
-const ACTIVE = ['bg-white', 'shadow-sm', 'dark:bg-slate-900'];
-function setMode(m) {
-  mode = m;
-  $('paneUrl').hidden = m !== 'url';
-  $('paneFile').hidden = m !== 'file';
-  for (const [id, on] of [['tabUrl', m === 'url'], ['tabFile', m === 'file']])
-    ACTIVE.forEach(c => $(id).classList.toggle(c, on));
-}
-$('tabUrl').onclick = () => setMode('url');
-$('tabFile').onclick = () => setMode('file');
-setMode('url');
-
-function setFile(f) { $('fileName').textContent = f ? f.name : 'Drop a file or click to browse'; }
-$('file').onchange = () => setFile($('file').files[0]);
-$('drop').ondragover = e => { e.preventDefault(); $('drop').classList.add('border-indigo-400'); };
-$('drop').ondragleave = () => $('drop').classList.remove('border-indigo-400');
-$('drop').ondrop = e => {
-  e.preventDefault();
-  $('drop').classList.remove('border-indigo-400');
-  if (e.dataTransfer.files.length) { $('file').files = e.dataTransfer.files; setFile(e.dataTransfer.files[0]); }
-};
-
-$('load').onclick = () => busy($('load'), 'Loading…', async () => {
-  const file = mode === 'file' ? $('file').files[0] : null;
-  const url = mode === 'url' ? $('url').value.trim() : '';
-  if (!file && !url) { setStatus(1, mode === 'file' ? 'Choose a subtitle file first.' : 'Enter a subtitle URL first.', 'error'); return; }
-  setStatus(1, 'Loading subtitles…');
-  try {
-    const data = await api('/api/parse', file ? { text: await file.text() } : { url });
-    if (!data.lines.length) throw new Error('No dialogue lines found in that file.');
-    state.lines = data.lines.map(l => ({ ...l, w: countWords(l.s) }));
-    state.sections = [];
-    state.expanded.clear();
-    state.candKey = state.wordKey = '';
-    state.maxStep = 1;
-    setStatus(1, '');
-    $('skipError').textContent = '';
-    updateSkipForm();
-    renderPreview();
-    go(2);
-  } catch (e) {
-    setStatus(1, 'Error: ' + e.message, 'error');
-  }
-});
-
-// ---------- step 2: preview & skips ----------
-const hasTimes = () => state.lines.some(l => l.t != null);
-
-function skipMask() {
-  const mask = new Array(state.lines.length).fill(false);
-  for (const s of state.sections) for (let i = s.a; i <= s.b; i++) mask[i] = true;
-  return mask;
-}
-
-function updateSkipForm() {
-  const timed = hasTimes();
-  for (const id of ['fromType', 'toType'])
-    [...$(id).options].forEach(o => { if (o.value === 'time') o.disabled = !timed; });
-  for (const [t, v] of [['fromType', 'fromVal'], ['toType', 'toVal']]) {
-    const type = $(t).value;
-    $(v).hidden = type === 'start' || type === 'end';
-    $(v).placeholder = type === 'time' ? 'e.g. 2:20' : 'e.g. SHOW TITLE';
-  }
-}
-$('fromType').onchange = $('toType').onchange = updateSkipForm;
-
-function resolveSection(from, to, incl) {
-  const L = state.lines, n = L.length;
-  const find = (q, start) => {
-    q = q.toLowerCase();
-    for (let i = start; i < n; i++) if (L[i].s.toLowerCase().includes(q)) return i;
-    return -1;
-  };
-  let a = 0, b = n - 1;
-  if (from.type === 'time') {
-    a = L.findIndex(l => l.t != null && l.t >= from.v);
-    if (a < 0) throw new Error('No subtitle at or after that start time.');
-  } else if (from.type === 'text') {
-    a = find(from.v, 0);
-    if (a < 0) throw new Error(`No line contains “${from.v}”.`);
-    if (!incl) a++;
-  }
-  if (to.type === 'time') {
-    b = L.findLastIndex(l => l.t != null && l.t <= to.v);
-  } else if (to.type === 'text') {
-    const j = find(to.v, a);
-    if (j < 0) throw new Error(`No line contains “${to.v}”${from.type === 'start' ? '' : ' after the start of the section'}.`);
-    b = incl ? j : j - 1;
-  }
-  if (b < a) throw new Error('That section contains no lines.');
-  return [a, b];
-}
-
-function describe(side, end) {
-  if (side.type === 'time') return fmtTime(side.v);
-  if (side.type === 'text') return `“${side.v}”`;
-  return end ? 'end' : 'start';
-}
-
-$('addSkip').onclick = () => {
-  const side = (t, v) => {
-    const type = $(t).value, raw = $(v).value.trim();
-    if (type === 'time') {
-      const sec = parseTime(raw);
-      if (sec == null) throw new Error('Enter a time like 2:20 or 1:02:03.');
-      return { type, v: sec };
-    }
-    if (type === 'text') {
-      if (!raw) throw new Error('Enter the sentence text to match.');
-      return { type, v: raw };
-    }
-    return { type };
-  };
-  try {
-    const from = side('fromType', 'fromVal'), to = side('toType', 'toVal');
-    const [a, b] = resolveSection(from, to, $('incl').checked);
-    state.sections.push({ a, b, label: `${describe(from)} → ${describe(to, true)}` });
-    state.expanded.delete(a);
-    $('skipError').textContent = '';
-    $('fromVal').value = $('toVal').value = '';
-    renderPreview();
-  } catch (e) {
-    $('skipError').textContent = e.message;
-  }
-};
-['fromVal', 'toVal'].forEach(id => $(id).onkeydown = e => { if (e.key === 'Enter') $('addSkip').click(); });
-
-function renderStats() {
-  const mask = skipMask();
-  let words = 0, keptWords = 0, keptLines = 0;
-  state.lines.forEach((l, i) => { words += l.w; if (!mask[i]) { keptWords += l.w; keptLines++; } });
-  const last = state.lines.findLast(l => l.t != null);
-  const cards = [
-    ['Lines', state.lines.length, keptLines === state.lines.length ? '' : `${keptLines} after skips`],
-    ['Words', words, keptWords === words ? '' : `${keptWords} after skips`],
-    ['Skipped lines', state.lines.length - keptLines, `${words - keptWords} words`],
-    ['Duration', last ? fmtTime(last.t) : '–', ''],
-  ];
-  $('stats').replaceChildren(...cards.map(([label, value, sub]) => {
-    const c = el('div', 'stat');
-    c.append(el('div', 'text-xs text-slate-500', label), el('div', 'text-xl font-semibold tabular-nums', String(value)), el('div', 'h-4 text-xs text-slate-500', sub));
-    return c;
-  }));
-  $('toWords').disabled = keptLines === 0;
-  setStatus(2, keptLines === 0 ? 'Every line is skipped.' : '', 'error');
-}
-
-function renderSections() {
-  $('sections').replaceChildren(...state.sections.map((s, i) => {
-    const li = el('li', 'hatch flex items-center gap-2 rounded-full border border-slate-300 px-3 py-1 text-xs dark:border-slate-700');
-    const rm = el('button', 'text-slate-500 hover:text-red-600', '✕');
-    rm.title = 'Remove this skip';
-    rm.onclick = () => { state.sections.splice(i, 1); renderPreview(); };
-    li.append(el('span', '', `${s.label} · ${s.b - s.a + 1} lines`), rm);
-    return li;
-  }));
-}
-
-function lineRow(i, skipped) {
-  const l = state.lines[i];
-  const row = el('div', 'flex gap-3 px-3 py-1 ' + (skipped ? 'hatch text-slate-400 line-through decoration-slate-300 dark:text-slate-500' : ''));
-  row.append(
-    el('span', 'w-12 shrink-0 text-right text-xs tabular-nums text-slate-400', fmtTime(l.t) || String(i + 1)),
-    el('span', '', l.s));
-  return row;
-}
-
-function renderPreview() {
-  renderSections();
-  renderStats();
-  const mask = skipMask(), frag = document.createDocumentFragment(), n = state.lines.length;
-  for (let i = 0; i < n;) {
-    if (!mask[i]) { frag.append(lineRow(i, false)); i++; continue; }
-    let j = i;
-    while (j + 1 < n && mask[j + 1]) j++;
-    const open = state.expanded.has(i), start = i;
-    const t0 = state.lines[i].t, t1 = state.lines[j].t;
-    const head = el('button', 'hatch flex w-full items-center gap-2 border-y border-slate-200 px-3 py-1.5 text-left text-xs font-medium text-slate-500 hover:bg-slate-100 dark:border-slate-800 dark:hover:bg-slate-800');
-    head.append(
-      el('span', '', open ? '▾' : '▸'),
-      el('span', '', `${j - i + 1} lines skipped` + (t0 != null ? ` · ${fmtTime(t0)} – ${fmtTime(t1)}` : '')),
-      el('span', 'ml-auto font-normal', open ? 'Collapse' : 'Expand'));
-    head.onclick = () => { open ? state.expanded.delete(start) : state.expanded.add(start); renderPreview(); };
-    frag.append(head);
-    if (open) for (let k = i; k <= j; k++) frag.append(lineRow(k, true));
-    i = j + 1;
-  }
-  const box = $('preview'), scroll = box.scrollTop;
-  box.replaceChildren(frag);
-  box.scrollTop = scroll;
-}
-
-// ---------- step 3: words ----------
-const REASONS = {
-  stopword: 'Common function word',
-  short: 'Too short',
-  known: 'Already known',
-  name: 'Looks like a proper name',
-  freq: 'Below min frequency',
-  limit: 'Over max candidates',
-  jev_name: 'Jev: proper name',
-  jev_useless: 'Jev: not useful',
-  manual: 'Excluded manually',
-};
-const included = c => c.override ?? !c.reason;
-const reasonCode = c => c.override === false ? 'manual' : c.reason;
-const pct = x => Math.round(x * 100) + '%';
-
-function reasonText(c) {
-  const code = reasonCode(c);
-  let text = REASONS[code] || code;
-  if (code === 'jev_name') text += ` (${pct(c.scores.name)})`;
-  if (code === 'jev_useless') text += ` (${pct(c.scores.useful)} useful)`;
-  return text;
-}
-
-function setIncluded(c, on) {
-  c.override = on === !c.reason ? null : on;
-  renderCands();
-}
-
-function renderCands() {
-  const keep = state.cands.filter(included);
-  const skip = state.cands.filter(c => !included(c));
-  $('keptCount').textContent = `${keep.length} words`;
-  $('skipCount').textContent = `${skip.length} words`;
-
-  const checkbox = (c, on) => {
-    const cb = el('input', 'h-4 w-4 accent-indigo-600');
-    cb.type = 'checkbox';
-    cb.checked = on;
-    cb.onchange = () => setIncluded(c, cb.checked);
-    return cb;
-  };
-  const cell = (cls, content) => {
-    const td = el('td', cls);
-    if (content instanceof Node) td.append(content); else td.textContent = content;
-    return td;
-  };
-
-  const keptFrag = document.createDocumentFragment();
-  for (const c of keep) {
-    const tr = el('tr', 'align-top hover:bg-slate-50 dark:hover:bg-slate-800/50');
-    const jev = c.scores ? `${pct(c.scores.useful)} useful · ${pct(c.scores.name)} name` : '–';
-    tr.append(
-      cell('px-2 py-1.5', checkbox(c, true)), cell('px-2 py-1.5 font-medium', c.word),
-      cell('px-2 py-1.5 text-right tabular-nums text-slate-500', String(c.count)),
-      cell('whitespace-nowrap px-2 py-1.5 text-xs text-slate-500', jev),
-      cell('px-2 py-1.5 text-xs text-slate-500', c.example));
-    keptFrag.append(tr);
-  }
-  $('keptRows').replaceChildren(keptFrag);
-
-  const codes = [...new Set(skip.map(reasonCode))];
-  const sel = $('reasonFilter'), cur = sel.value;
-  sel.replaceChildren(new Option('All reasons', ''), ...codes.map(code => new Option(REASONS[code] || code, code)));
-  sel.value = codes.includes(cur) ? cur : '';
-
-  const q = $('skipSearch').value.trim().toLowerCase();
-  const skipFrag = document.createDocumentFragment();
-  for (const c of skip) {
-    if (sel.value && reasonCode(c) !== sel.value) continue;
-    if (q && !c.word.includes(q)) continue;
-    const tr = el('tr', 'align-top text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800/50');
-    tr.append(
-      cell('px-2 py-1.5', checkbox(c, false)), cell('px-2 py-1.5 font-medium', c.word),
-      cell('px-2 py-1.5 text-right tabular-nums', String(c.count)),
-      cell('whitespace-nowrap px-2 py-1.5 text-xs', reasonText(c)),
-      cell('hidden px-2 py-1.5 text-xs md:table-cell', c.example));
-    skipFrag.append(tr);
-  }
-  $('skipRows').replaceChildren(skipFrag);
-  $('toTranslate').disabled = keep.length === 0;
-}
-$('reasonFilter').onchange = $('skipSearch').oninput = renderCands;
-
-async function loadCandidates() {
-  const keptLines = state.lines.filter((_, i) => !skipMask()[i]).map(l => l.s);
-  setStatus(3, 'Analysing words — this can take a moment…');
-  const data = await api('/api/candidates', {
-    lines: keptLines,
-    limit: $('limit').value, minLen: $('minLen').value, minFreq: $('minFreq').value,
-    minUseful: $('minUseful').value, engine: $('engine').value,
-    jev: $('jev').checked, useKnown: $('useKnown').checked,
-  });
-  state.cands = data.words.map(w => ({ ...w, override: null }));
-  state.engine = data.engine;
-  const warn = [];
-  if (data.jevError) warn.push('Jev warning: ' + data.jevError);
-  if (data.stanzaMissing) warn.push('Stanza not installed, used plain word matching.');
-  const kept = state.cands.filter(c => !c.reason).length;
-  setStatus(3, [`${keptLines.length} lines · ${state.cands.length} distinct words · ${kept} to translate · engine: ${data.engine}`, ...warn].join('\n'), warn.length ? 'info' : 'ok');
-  renderCands();
-}
-
-$('toWords').onclick = () => busy($('toWords'), 'Working…', async () => {
-  const key = JSON.stringify(state.sections.map(s => [s.a, s.b]));
-  if (key !== state.candKey || !state.cands.length) {
-    go(3);
-    try { await loadCandidates(); state.candKey = key; state.wordKey = ''; }
-    catch (e) { setStatus(3, 'Error: ' + e.message, 'error'); }
-  } else go(3);
-});
-
-$('rerun').onclick = () => busy($('rerun'), 'Working…', async () => {
-  try { await loadCandidates(); state.wordKey = ''; }
-  catch (e) { setStatus(3, 'Error: ' + e.message, 'error'); }
-});
-
-// ---------- step 4: translations ----------
-$('toTranslate').onclick = () => busy($('toTranslate'), 'Translating…', async () => {
-  const chosen = state.cands.filter(included);
-  const key = state.engine + '|' + chosen.map(c => c.word).join(',');
-  if (key === state.wordKey && state.words.length) { go(4); return; }
-  go(4);
-  setStatus(4, 'Translating — this can take a moment…');
-  try {
-    const data = await api('/api/translate', {
-      engine: state.engine, useKnown: $('useKnown').checked,
-      words: chosen.map(({ word, count, example }) => ({ word, count, example })),
-    });
-    state.words = data.words.map(w => ({ ...w, keep: !w.note }));
-    state.wordKey = key;
-    state.generated = false;
-    $('outCard').hidden = true;
-    $('search').value = '';
-    const warn = [];
-    if (data.translateError) warn.push('Translation warning: ' + data.translateError);
-    const dropped = state.words.filter(w => w.note).length;
-    const info = [`${state.words.length - dropped} words`];
-    if (dropped) info.push(`${dropped} removed after lemmatizing (shown unticked)`);
-    if (data.translator) info.push(`translated by ${data.translator}`);
-    setStatus(4, info.join(' · ') + (warn.length ? '\n' + warn.join(' ') : ''), warn.length ? 'info' : 'ok');
-    renderWords();
-  } catch (e) {
-    setStatus(4, 'Error: ' + e.message, 'error');
-  }
-});
-
-function renderWords() {
-  const frag = document.createDocumentFragment();
-  state.words.forEach(w => {
-    const tr = el('tr', 'align-top hover:bg-slate-50 dark:hover:bg-slate-800/50' + (w.keep ? '' : ' opacity-50'));
-    const td = (cls, ...nodes) => { const c = el('td', cls); c.append(...nodes); return c; };
-    const cb = el('input', 'h-4 w-4 accent-indigo-600');
-    cb.type = 'checkbox';
-    cb.checked = w.keep;
-    cb.onchange = () => { w.keep = cb.checked; tr.classList.toggle('opacity-50', !w.keep); build(); };
-    const src = el('input', 'field font-medium');
-    src.value = w.word;
-    src.oninput = () => { w.word = src.value; build(); };
-    if (w.forms) src.title = w.forms.join(', ');
-    const tr_ = el('input', 'field');
-    tr_.value = w.translation || '';
-    tr_.oninput = () => { w.translation = tr_.value; build(); };
-    const trCell = td('px-2 py-1.5', tr_);
-    if (w.note) trCell.append(el('div', 'mt-1 text-xs text-amber-600 dark:text-amber-400', w.note));
-    tr.append(
-      td('px-2 py-2', cb), td('px-2 py-1.5', src), trCell,
-      td('px-2 py-2 text-right tabular-nums text-slate-500', String(w.count)),
-      td('hidden px-2 py-2 text-xs text-slate-500 md:table-cell', w.example || ''));
-    w.el = tr; w.cb = cb;
-    frag.append(tr);
-  });
-  $('rows').replaceChildren(frag);
-  applyFilter();
-  build();
-}
-
-function applyFilter() {
-  const q = $('search').value.trim().toLowerCase();
-  state.words.forEach(w => { w.el.hidden = q && !(w.word + ' ' + (w.translation || '')).toLowerCase().includes(q); });
-}
-$('search').oninput = applyFilter;
-
-function setAll(v) {
-  state.words.forEach(w => { if (!w.el.hidden) { w.keep = v; w.cb.checked = v; w.el.classList.toggle('opacity-50', !v); } });
-  build();
-}
-$('selAll').onclick = () => setAll(true);
-$('selNone').onclick = () => setAll(false);
-
-function build() {
-  const kept = state.words.filter(w => w.keep);
-  $('count').textContent = `${kept.length} / ${state.words.length} selected`;
-  if (!state.generated) return;
-  const ex = $('example').checked;
-  $('out').value = kept.map(w => {
-    let s = `${w.word} :: ${w.translation || ''}`;
-    if (ex && w.example) s += `\n    ${w.example}`;
-    return s;
-  }).join('\n');
-}
-$('example').onchange = build;
-
-$('generate').onclick = () => {
-  state.generated = true;
-  $('outCard').hidden = false;
-  build();
-  $('outCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
-};
-
-$('copy').onclick = async () => {
-  await navigator.clipboard.writeText($('out').value);
-  toast('Copied to clipboard');
-};
-$('known').onclick = async () => {
-  const words = state.words.filter(w => w.keep).map(w => w.word);
-  if (!words.length || !confirm(`Hide these ${words.length} words in future extractions?`)) return;
-  try {
-    const data = await api('/api/known', { words });
-    toast(`Marked ${data.added} new words as known`);
-  } catch (e) { toast('Error: ' + e.message); }
-};
-$('dl').onclick = () => {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([$('out').value], { type: 'text/markdown' }));
-  a.download = 'basque-words.md';
-  a.click();
-};
-
-go(1);
-</script>
+<script type="module" src="/src/main.js"></script>
 </body>
 </html>

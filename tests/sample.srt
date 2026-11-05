@@ -1,0 +1,25 @@
+﻿1
+00:00:01,000 --> 00:00:03,500
+<i>JON: Kaixo, zer moduz zaude gaur?</i>
+
+2
+00:00:03,600 --> 00:00:05,000
+Kaixo, zer moduz zaude gaur?
+
+3
+00:00:05,100 --> 00:00:08,200
+- Ondo, eskerrik asko. Mikel etorri da etxera.
+- Benetan? Mikel &amp; Ane ere bai?
+
+4
+00:00:09,000 --> 00:00:11,000
+[musika] ♪ Itsasoa ikusi nahi dut ♪
+
+5
+00:00:12,000 --> 00:00:14,000
+ESKERRIK ASKO
+
+6
+00:01:02,250 --> 00:01:04,000
+Emakumeak etxeetan daude, eta gizonak kalean ikus-entzunezko lanetan.
+Gaur ere Mikel ez da etorri. ¿Zergatik ez? "Etxean" dago.

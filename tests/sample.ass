@@ -1,0 +1,8 @@
+[Script Info]
+[V4+ Styles]
+Format: Name, Fontname
+Style: Default,Arial
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:01.50,0:00:03.00,Default,,0,0,0,,{\i1}Mendira joango gara bihar,{\i0} lagunekin.\NOso polita da.
+Dialogue: 0,0:01:02.25,0:01:05.00,Default,,0,0,0,,Bai, Donostiako hondartza ederra da, ederra benetan.
